@@ -1,0 +1,47 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('{{tableName}}', function (Blueprint $table) {
+{{#if (eq primaryKey 'id')}}
+            $table->id();
+{{/if}}
+{{#if (eq primaryKey 'uuid')}}
+            $table->uuid('id')->primary();
+{{/if}}
+{{#if (eq primaryKey 'ulid')}}
+            $table->ulid('id')->primary();
+{{/if}}
+{{#each fields}}
+            {{{migrationLine this}}}
+{{/each}}
+{{#if migration.timestamps}}
+{{#if migration.timestampsTz}}
+            $table->timestampsTz();
+{{else}}
+            $table->timestamps();
+{{/if}}
+{{/if}}
+{{#if migration.softDeletes}}
+{{#if migration.softDeletesTz}}
+            $table->softDeletesTz();
+{{else}}
+            $table->softDeletes();
+{{/if}}
+{{/if}}
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('{{tableName}}');
+    }
+};

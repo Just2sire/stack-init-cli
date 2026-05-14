@@ -1,0 +1,126 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+{{#if generate.factory}}
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+{{/if}}
+{{#each imports}}
+use {{{this}}};
+{{/each}}
+
+class {{name}} extends Model
+{
+{{#if generate.factory}}
+    use HasFactory;
+{{/if}}
+{{#if generate.softDelete}}
+    use SoftDeletes;
+{{/if}}
+
+{{#if customTable}}
+    protected $table = '{{customTable}}';
+
+{{/if}}
+{{#if (eq migration.primary_key 'uuid')}}
+    /**
+     * @var string
+     */
+    protected $keyType = 'string';
+
+    /**
+     * @var bool
+     */
+    public $incrementing = false;
+
+{{/if}}
+{{#if (eq migration.primary_key 'ulid')}}
+    /**
+     * @var string
+     */
+    protected $keyType = 'string';
+
+    /**
+     * @var bool
+     */
+    public $incrementing = false;
+
+{{/if}}
+{{#if (eq migration.primary_key 'custom')}}
+    // TODO: Define custom primary key name and type
+    // protected $primaryKey = '...';
+    // public $incrementing = false;
+
+{{/if}}
+{{#unless migration.timestamps}}
+    public $timestamps = false;
+
+{{/unless}}
+    /**
+     * @var array<int, string>
+     */
+    protected $fillable = [
+{{#each fillable}}
+        '{{this}}',
+{{/each}}
+    ];
+
+{{#if casts}}
+    /**
+     * @var array<string, string>
+     */
+    protected $casts = [
+{{#each casts}}
+        '{{@key}}' => {{{this}}},
+{{/each}}
+    ];
+
+{{/if}}
+{{#if hiddenFields}}
+    /**
+     * @var array<int, string>
+     */
+    protected $hidden = [
+{{#each hiddenFields}}
+        '{{this}}',
+{{/each}}
+    ];
+
+{{/if}}
+    // -------------------------------------------------------------------------
+    // Relations
+    // -------------------------------------------------------------------------
+{{#each relations}}
+{{#if (eq type 'hasOne')}}
+    public function {{camelCase model}}(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne({{model}}::class);
+    }
+
+{{/if}}
+{{#if (eq type 'hasMany')}}
+    public function {{camelCasePlural model}}(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany({{model}}::class);
+    }
+
+{{/if}}
+{{#if (eq type 'belongsTo')}}
+    public function {{camelCase model}}(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo({{model}}::class);
+    }
+
+{{/if}}
+{{#if (eq type 'belongsToMany')}}
+    public function {{camelCasePlural model}}(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany({{model}}::class{{#if pivot_table}}, '{{pivot_table}}'{{/if}});
+    }
+
+{{/if}}
+{{/each}}
+}

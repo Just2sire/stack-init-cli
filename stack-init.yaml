@@ -1,0 +1,64 @@
+name: my-blog
+stack: laravel
+
+models:
+  - name: User
+    fields:
+      - { name: name,               type: string }
+      - { name: email,              type: string,    unique: true }
+      - { name: role,               type: enum,      values: [admin, editor, viewer] }
+      - { name: email_verified_at,  type: timestamp, nullable: true }
+    relations:
+      - { type: hasMany, model: Post }
+      - { type: hasMany, model: Comment }
+    migration:
+      timestamps: true
+    generate:
+      migration:  true
+      resource:   true
+      request:    true
+      policy:     true
+      factory:    true
+      tests:      true
+
+  - name: Post
+    fields:
+      - { name: title,        type: string }
+      - { name: body,         type: longText }
+      - { name: published_at, type: timestamp, nullable: true }
+      - { name: user_id,      type: foreignId, references: users }
+    relations:
+      - { type: belongsTo, model: User }
+      - { type: hasMany,   model: Comment }
+    migration:
+      timestamps:  true
+      softDeletes: true
+    generate:
+      migration: true
+      resource:  true
+      request:   true
+      factory:   true
+      tests:     true
+
+  - name: Comment
+    fields:
+      - { name: body,     type: text }
+      - { name: user_id,  type: foreignId, references: users }
+      - { name: post_id,  type: foreignId, references: posts }
+    relations:
+      - { type: belongsTo, model: User }
+      - { type: belongsTo, model: Post }
+    generate:
+      migration: true
+      resource:  true
+      request:   true
+      factory:   true
+      tests:     false
+
+laravel:
+  pattern:          api-only
+  auth:             sanctum
+  runner:           makefile
+  db_engine:        mysql
+  php_version:      "8.2"
+  laravel_version:  "11"

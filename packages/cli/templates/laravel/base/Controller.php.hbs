@@ -1,0 +1,160 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\\{{name}};
+{{#if generate.resource}}
+use App\Http\Resources\\{{name}}Resource;
+{{/if}}
+{{#if generate.request}}
+use App\Http\Requests\Store{{name}}Request;
+use App\Http\Requests\Update{{name}}Request;
+{{/if}}
+{{#if generate.service}}
+use App\Services\\{{name}}Service;
+{{/if}}
+use Illuminate\Http\{JsonResponse, Request};
+
+class {{name}}Controller extends Controller
+{
+{{#if generate.service}}
+    public function __construct(
+        private readonly {{name}}Service $service
+    ) {}
+
+{{/if}}
+    /**
+     * Display a listing of the resource.
+     {{#if generate.swagger}}
+     * @OA\Get(
+     *     path="/api/{{routeName}}",
+     *     operationId="get{{name}}List",
+     *     tags={"{{name}}"},
+     *     summary="Get list of {{name}}",
+     *     @OA\Response(response=200, description="Successful operation")
+     * )
+     {{/if}}
+     */
+    public function index(Request $request): JsonResponse
+    {
+{{#if generate.service}}
+        $items = $this->service->paginate($request);
+{{else}}
+        $items = {{name}}::query()->paginate($request->integer('per_page', 15));
+{{/if}}
+{{#if generate.resource}}
+        return {{name}}Resource::collection($items)->response();
+{{else}}
+        return response()->json($items);
+{{/if}}
+    }
+
+    /**
+     * Display the specified resource.
+     {{#if generate.swagger}}
+     * @OA\Get(
+     *     path="/api/{{routeName}}/{id}",
+     *     operationId="get{{name}}ById",
+     *     tags={"{{name}}"},
+     *     summary="Get {{name}} information",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=200, description="Successful operation"),
+     *     @OA\Response(response=404, description="Resource not found")
+     * )
+     {{/if}}
+     */
+    public function show({{name}} ${{varName}}): JsonResponse
+    {
+{{#if generate.resource}}
+        return (new {{name}}Resource(${{varName}}))->response();
+{{else}}
+        return response()->json(${{varName}});
+{{/if}}
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     {{#if generate.swagger}}
+     * @OA\Post(
+     *     path="/api/{{routeName}}",
+     *     operationId="store{{name}}",
+     *     tags={"{{name}}"},
+     *     summary="Store new {{name}}",
+     *     @OA\RequestBody(required=true, @OA\JsonContent()),
+     *     @OA\Response(response=201, description="Resource created"),
+     *     @OA\Response(response=422, description="Validation error")
+     * )
+     {{/if}}
+     */
+    public function store({{#if generate.request}}Store{{name}}Request{{else}}Request{{/if}} $request): JsonResponse
+    {
+{{#if generate.service}}
+        $item = $this->service->create($request->validated());
+{{else}}
+        $item = {{name}}::create($request->validated());
+{{/if}}
+{{#if generate.resource}}
+        return (new {{name}}Resource($item))->response()->setStatusCode(201);
+{{else}}
+        return response()->json($item, 201);
+{{/if}}
+    }
+
+    /**
+     * Update the specified resource in storage.
+     {{#if generate.swagger}}
+     * @OA\Put(
+     *     path="/api/{{routeName}}/{id}",
+     *     operationId="update{{name}}",
+     *     tags={"{{name}}"},
+     *     summary="Update existing {{name}}",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\RequestBody(required=true, @OA\JsonContent()),
+     *     @OA\Response(response=200, description="Successful operation"),
+     *     @OA\Response(response=404, description="Resource not found"),
+     *     @OA\Response(response=422, description="Validation error")
+     * )
+     {{/if}}
+     */
+    public function update({{#if generate.request}}Update{{name}}Request{{else}}Request{{/if}} $request, {{name}} ${{varName}}): JsonResponse
+    {
+{{#if generate.service}}
+        $item = $this->service->update(${{varName}}, $request->validated());
+{{else}}
+        ${{varName}}->update($request->validated());
+        $item = ${{varName}};
+{{/if}}
+{{#if generate.resource}}
+        return (new {{name}}Resource($item))->response();
+{{else}}
+        return response()->json($item);
+{{/if}}
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     {{#if generate.swagger}}
+     * @OA\Delete(
+     *     path="/api/{{routeName}}/{id}",
+     *     operationId="delete{{name}}",
+     *     tags={"{{name}}"},
+     *     summary="Delete {{name}}",
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Response(response=204, description="Successful operation"),
+     *     @OA\Response(response=404, description="Resource not found")
+     * )
+     {{/if}}
+     */
+    public function destroy({{name}} ${{varName}}): JsonResponse
+    {
+{{#if generate.service}}
+        $this->service->delete(${{varName}});
+{{else}}
+        ${{varName}}->delete();
+{{/if}}
+        return response()->json(null, 204);
+    }
+}

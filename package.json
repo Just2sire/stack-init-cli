@@ -1,0 +1,16 @@
+{
+  "name": "stack-init-cli",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r dev",
+    "test": "pnpm -r test",
+    "clean": "pnpm -r clean"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "bin": {
+    "stack-init": "./packages/cli/dist/index.js"
+  }
+}

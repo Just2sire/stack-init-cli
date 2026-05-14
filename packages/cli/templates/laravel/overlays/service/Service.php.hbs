@@ -1,0 +1,62 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services;
+
+use App\Models\\{{name}};
+{{#if generate.repository}}
+use App\Repositories\\{{name}}Repository;
+{{/if}}
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Http\Request;
+
+class {{name}}Service
+{
+{{#if generate.repository}}
+    public function __construct(
+        private readonly {{name}}Repository $repository
+    ) {}
+
+    public function paginate(Request $request): LengthAwarePaginator
+    {
+        return $this->repository->paginate($request->integer('per_page', 15));
+    }
+
+    public function create(array $data): {{name}}
+    {
+        return $this->repository->create($data);
+    }
+
+    public function update({{name}} ${{varName}}, array $data): {{name}}
+    {
+        return $this->repository->update(${{varName}}, $data);
+    }
+
+    public function delete({{name}} ${{varName}}): void
+    {
+        $this->repository->delete(${{varName}});
+    }
+{{else}}
+    public function paginate(Request $request): LengthAwarePaginator
+    {
+        return {{name}}::query()->paginate($request->integer('per_page', 15));
+    }
+
+    public function create(array $data): {{name}}
+    {
+        return {{name}}::create($data);
+    }
+
+    public function update({{name}} ${{varName}}, array $data): {{name}}
+    {
+        ${{varName}}->update($data);
+        return ${{varName}}->fresh();
+    }
+
+    public function delete({{name}} ${{varName}}): void
+    {
+        ${{varName}}->delete();
+    }
+{{/if}}
+}

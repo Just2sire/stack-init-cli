@@ -1,0 +1,57 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Models\\{{name}};
+{{#if hasUserRelation}}
+use App\Models\User;
+{{/if}}
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
+
+test('can list {{namePlural}}', function () {
+    {{name}}::factory()->count(3)->create();
+    $this->getJson('/api/{{routeName}}')
+         ->assertOk()
+         ->assertJsonStructure(['data', 'meta']);
+});
+
+test('can show a {{varName}}', function () {
+    ${{varName}} = {{name}}::factory()->create();
+    $this->getJson("/api/{{routeName}}/{${{varName}}->id}")
+         ->assertOk()
+         ->assertJsonPath('data.id', ${{varName}}->id);
+});
+
+test('can create a {{varName}}', function () {
+    $payload = {{name}}::factory()->make()->toArray();
+    $this->postJson('/api/{{routeName}}', $payload)
+         ->assertCreated();
+    $this->assertDatabaseHas('{{tableName}}', $payload);
+});
+
+test('store validates required fields', function () {
+    $this->postJson('/api/{{routeName}}', [])
+         ->assertUnprocessable()
+         ->assertJsonStructure(['message', 'errors']);
+});
+
+test('can update a {{varName}}', function () {
+    ${{varName}} = {{name}}::factory()->create();
+    $payload     = {{name}}::factory()->make()->toArray();
+    $this->putJson("/api/{{routeName}}/{${{varName}}->id}", $payload)
+         ->assertOk();
+    $this->assertDatabaseHas('{{tableName}}', ['id' => ${{varName}}->id, ...$payload]);
+});
+
+test('can delete a {{varName}}', function () {
+    ${{varName}} = {{name}}::factory()->create();
+    $this->deleteJson("/api/{{routeName}}/{${{varName}}->id}")
+         ->assertNoContent();
+{{#if generate.softDelete}}
+    $this->assertSoftDeleted('{{tableName}}', ['id' => ${{varName}}->id]);
+{{else}}
+    $this->assertDatabaseMissing('{{tableName}}', ['id' => ${{varName}}->id]);
+{{/if}}
+});

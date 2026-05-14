@@ -1,0 +1,25 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Database\Factories;
+
+use App\Models\\{{name}};
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/**
+ * @extends Factory<{{name}}>
+ */
+class {{name}}Factory extends Factory
+{
+    protected $model = {{name}}::class;
+
+    public function definition(): array
+    {
+        return [
+{{#each fakerFields}}
+            '{{name}}' => {{{faker}}},
+{{/each}}
+        ];
+    }
+}
