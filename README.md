@@ -1,6 +1,6 @@
 # stack-init
 
-`stack-init` est un générateur de code Laravel qui crée automatiquement les modèles, migrations, contrôleurs, ressources, requêtes, policies, factories et tests à partir d'un fichier YAML de configuration.
+`stack-init-cli` est un générateur de code Laravel qui crée automatiquement les modèles, migrations, contrôleurs, ressources, requêtes, policies, factories et tests à partir d'un fichier YAML de configuration.
 
 ## Fonctionnalités
 
