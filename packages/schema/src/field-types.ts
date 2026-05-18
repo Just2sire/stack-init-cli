@@ -126,12 +126,14 @@ export const ForeignUuidFieldSchema = BaseFieldModifiers.extend({
   type:        z.literal('foreignUuid'),
   references:  z.string(),
   on_delete:   z.enum(['cascade', 'restrict', 'set null', 'no action']).default('cascade'),
+  on_update:   z.enum(['cascade', 'restrict', 'set null', 'no action']).default('cascade'),
   constrained: z.boolean().default(true),
 })
 export const ForeignUlidFieldSchema = BaseFieldModifiers.extend({
   type:        z.literal('foreignUlid'),
   references:  z.string(),
   on_delete:   z.enum(['cascade', 'restrict', 'set null', 'no action']).default('cascade'),
+  on_update:   z.enum(['cascade', 'restrict', 'set null', 'no action']).default('cascade'),
   constrained: z.boolean().default(true),
 })
 export const MorphsFieldSchema     = z.object({ type: z.literal('morphs'),     nullable: z.boolean().default(false) })
@@ -204,9 +206,9 @@ export const FIELD_TYPES_WITH_PARAMS: Partial<Record<FieldType, string[]>> = {
   timeTz:      ['precision'],
   timestamp:   ['precision'],
   timestampTz: ['precision'],
-  foreignId:   ['references', 'on_delete', 'constrained'],
-  foreignUuid: ['references', 'on_delete', 'constrained'],
-  foreignUlid: ['references', 'on_delete', 'constrained'],
+  foreignId:   ['references', 'on_delete', 'on_update', 'constrained'],
+  foreignUuid: ['references', 'on_delete', 'on_update', 'constrained'],
+  foreignUlid: ['references', 'on_delete', 'on_update', 'constrained'],
   vector:      ['dimensions'],
 }
 

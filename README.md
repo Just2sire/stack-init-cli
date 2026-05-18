@@ -1,13 +1,15 @@
 # stack-init
 
-`stack-init-cli` est un générateur de code Laravel qui crée automatiquement les modèles, migrations, contrôleurs, ressources, requêtes, policies, factories et tests à partir d'un fichier YAML de configuration.
+`stack-init-cli` est un générateur de code full-stack qui crée automatiquement des projets complets (Laravel, Express, NestJS, React, Next.js) à partir d'un fichier YAML de configuration.
 
 ## Fonctionnalités
 
-- Génération de code Laravel basée sur une configuration YAML simple
-- Support des modèles, migrations, contrôleurs API, ressources, requests, policies, factories et tests
-- Architecture monorepo avec un package CLI et un package de schema partagé
-- Support des champs Laravel courants et des relations Eloquent
+- **Génération Multi-Stack** : Support de Laravel, Express (Prisma), NestJS (TypeORM), React et Next.js.
+- **Mixed Stacks** : Orchestration automatique de projets mixtes (ex: `laravel+react`, `express+react`).
+- **Smart Injection** : Mise à jour intelligente des fichiers existants (routes, modules) plutôt qu'écrasement.
+- **Templates ZIP** : Support de templates riches pour le frontend (React/Next.js).
+- **Manifeste & Rollback** : Suivi précis des fichiers générés pour un nettoyage facile.
+- **Orchestration** : Génération de `Makefile` et `docker-compose.yml` pour gérer plusieurs services.
 
 ## Installation
 
@@ -32,7 +34,7 @@ pnpm link --global
 
 ## Utilisation
 
-Depuis un projet Laravel, créez un fichier `stack-init.yaml` et lancez :
+Créez un fichier `stack-init.yaml` et lancez :
 
 ```bash
 stack-init generate
@@ -44,38 +46,64 @@ stack-init generate
 stack-init generate --config chemin/vers/stack-init.yaml
 stack-init generate --output /chemin/vers/projet
 stack-init generate --dry-run   # affiche les fichiers générés sans écrire
+stack-init rollback --output /chemin/vers/projet # annule la dernière génération
 ```
 
 ## Exemple de configuration `stack-init.yaml`
 
 ```yaml
 name: mon-projet
-stack: laravel
+version: 0.1.0
+stack: express+react
+
+express:
+  db_engine: postgresql
+  orm: prisma
+  runner: makefile
+
+react:
+  typescript: true
 
 models:
   - name: Post
     fields:
       - { name: title, type: string }
-      - { name: body, type: longText }
-      - { name: user_id, type: foreignId, references: users }
-    relations:
-      - { type: belongsTo, model: User }
-    migration:
-      timestamps: true
-      softDeletes: true
+      - { name: content, type: text }
     generate:
-      migration: true
-      resource: true
-      request: true
-      factory: true
-      policy: false
-      tests: true
-
-laravel:
-  auth: sanctum
-  runner: makefile
-  db_engine: mysql
+      controller: true
+      service: true
+      repository: true
+      routes: true
 ```
+
+## Stacks Supportées
+
+- **Backend** :
+  - `laravel` (PHP)
+  - `express` (Node.js + Prisma)
+  - `nestjs` (Node.js + TypeORM)
+- **Frontend** :
+  - `react` (Vite template)
+  - `nextjs` (App Router template)
+- **Combinations** :
+  - `laravel+react`, `laravel+nextjs`
+  - `express+react`
+
+## Architecture Multi-Stack
+
+Pour les stacks mixtes (ex: `express+react`), `stack-init` organise le projet ainsi :
+- `backend/` : Code du serveur (Express/Laravel)
+- `frontend/` : Code client (React/Next.js)
+- `Makefile` : Commandes globales (`make setup`, `make dev`)
+- `docker-compose.yml` : Configuration Docker pour les deux services
+
+## Ce qui est généré (Express/NestJS)
+
+- **Modèles/Entités** : Schémas Prisma ou Entités TypeORM.
+- **Couches (Layers)** : Controllers, Services, Repositories, DTOs/Validation.
+- **Routes** : Définition des endpoints et injection automatique dans le routeur principal.
+- **Manifeste** : `.stack-init-manifest.json` pour le rollback.
+
 
 ## Champs supportés
 

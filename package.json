@@ -5,12 +5,21 @@
     "build": "pnpm -r build",
     "dev": "pnpm -r dev",
     "test": "pnpm -r test",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r clean",
+    "lint": "eslint \"packages/*/src/**/*.ts\"",
+    "format": "prettier --write \"packages/*/src/**/*.ts\""
   },
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.0.0"
   },
   "bin": {
     "stack-init": "./packages/cli/dist/index.js"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }

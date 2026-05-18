@@ -1,0 +1,13 @@
+import { z } from 'zod';
+
+export const Create{{pascalName}}Schema = z.object({
+  {{#each fields}}
+  {{#if (neq type "id")}}
+  {{#if (neq type "uuid")}}
+  {{name}}: z.{{#if (eq type "int")}}number(){{else if (eq type "string")}}string(){{else if (eq type "boolean")}}boolean(){{else}}any(){{/if}}{{#if nullable}}.optional(){{/if}},
+  {{/if}}
+  {{/if}}
+  {{/each}}
+});
+
+export const Update{{pascalName}}Schema = Create{{pascalName}}Schema.partial();

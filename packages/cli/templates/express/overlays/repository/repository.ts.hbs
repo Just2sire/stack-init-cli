@@ -1,0 +1,97 @@
+{{#if (eq expressConfig.orm "mongoose")}}
+import { {{pascalName}} } from '../models/{{name}}.model';
+
+export class {{pascalName}}Repository {
+  async findAll() {
+    return {{pascalName}}.find();
+  }
+
+  async findById(id: string) {
+    return {{pascalName}}.findById(id);
+  }
+
+  async create(data: any) {
+    return {{pascalName}}.create(data);
+  }
+
+  async update(id: string, data: any) {
+    return {{pascalName}}.findByIdAndUpdate(id, data, { new: true });
+  }
+
+  async delete(id: string) {
+    return {{pascalName}}.findByIdAndDelete(id);
+  }
+}
+{{else if (eq expressConfig.orm "sequelize")}}
+// TODO: wire your Sequelize model here
+export class {{pascalName}}Repository {
+  async findAll() { return []; }
+  async findById(id: number) { return null; }
+  async create(data: any) { return data; }
+  async update(id: number, data: any) { return data; }
+  async delete(id: number) { return; }
+}
+{{else if (eq expressConfig.orm "typeorm")}}
+// TODO: wire your TypeORM repository here
+export class {{pascalName}}Repository {
+  async findAll() { return []; }
+  async findById(id: number) { return null; }
+  async create(data: any) { return data; }
+  async update(id: number, data: any) { return data; }
+  async delete(id: number) { return; }
+}
+{{else if (eq expressConfig.orm "prisma")}}
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export class {{pascalName}}Repository {
+  async findAll() {
+    return prisma.{{camelName}}.findMany();
+  }
+
+  async findById(id: {{#each fields}}{{#if (eq type "id")}}number{{/if}}{{#if (eq type "uuid")}}string{{/if}}{{/each}}) {
+    return prisma.{{camelName}}.findUnique({ where: { id } });
+  }
+
+  async create(data: any) {
+    return prisma.{{camelName}}.create({ data });
+  }
+
+  async update(id: {{#each fields}}{{#if (eq type "id")}}number{{/if}}{{#if (eq type "uuid")}}string{{/if}}{{/each}}, data: any) {
+    return prisma.{{camelName}}.update({ where: { id }, data });
+  }
+
+  async delete(id: {{#each fields}}{{#if (eq type "id")}}number{{/if}}{{#if (eq type "uuid")}}string{{/if}}{{/each}}) {
+    return prisma.{{camelName}}.delete({ where: { id } });
+  }
+}
+{{else}}
+export class {{pascalName}}Repository {
+  private store: any[] = [];
+  private nextId = 1;
+
+  async findAll() { return this.store; }
+
+  async findById(id: number) {
+    return this.store.find(item => item.id === id) ?? null;
+  }
+
+  async create(data: any) {
+    const item = { id: this.nextId++, ...data };
+    this.store.push(item);
+    return item;
+  }
+
+  async update(id: number, data: any) {
+    const idx = this.store.findIndex(item => item.id === id);
+    if (idx === -1) return null;
+    this.store[idx] = { ...this.store[idx], ...data };
+    return this.store[idx];
+  }
+
+  async delete(id: number) {
+    this.store = this.store.filter(item => item.id !== id);
+  }
+}
+{{/if}}

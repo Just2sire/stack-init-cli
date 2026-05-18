@@ -5,13 +5,11 @@ import type { Model, ProjectConfig } from '@stack-init/schema'
 import { configureHandlebars } from './handlebars'
 import { fieldToCast, fieldToValidationRule, fieldToFaker } from '../../utils/field-helpers'
 import { modelToTableName, modelToRouteName, modelToVarName, migrationTimestamp, pluralize } from '../../utils/naming'
+import { type GeneratedFile } from '../../utils/fs'
+import { resolveTemplatesDir } from '../../utils/template-path'
 
-const TEMPLATES_DIR = path.resolve(__dirname, '../../../templates/laravel')
+const TEMPLATES_DIR = resolveTemplatesDir('laravel')
 
-export interface GeneratedFile {
-  outputPath: string
-  content: string
-}
 export interface GeneratorResult {
   files: GeneratedFile[]
   warnings: string[]
@@ -23,7 +21,7 @@ export class LaravelGenerator {
 
   constructor() { this.hbs = configureHandlebars() }
 
-  async generate(config: ProjectConfig): Promise<GeneratorResult> {
+  async generate(config: ProjectConfig, projectRoot: string): Promise<GeneratorResult> {
     const result: GeneratorResult = { files: [], warnings: [] }
     for (let i = 0; i < config.models.length; i++) {
       const r = await this.generateModel(config.models[i], config, i)
@@ -34,17 +32,63 @@ export class LaravelGenerator {
     // Routes
     const modelsWithRoutes = config.models.filter(m => m.generate.routes)
     if (modelsWithRoutes.length > 0) {
+      const routePath = path.join(projectRoot, 'routes/api.php')
       const routeCtx = {
-        models: config.models.map(m => ({
+        models: modelsWithRoutes.map(m => ({
           name: m.name,
           routeName: modelToRouteName(m.name),
           generate: m.generate,
         })),
       }
-      result.files.push({
-        outputPath: 'routes/api.php',
-        content: this.render('overlays/routes/api.php.hbs', routeCtx),
-      })
+
+      if (fs.existsSync(routePath)) {
+        let content = fs.readFileSync(routePath, 'utf-8')
+        for (const model of routeCtx.models) {
+          const resourceLine = `Route::apiResource('${model.routeName}', ${model.name}Controller::class);`
+          const useLine = `use App\\Http\\Controllers\\Api\\${model.name}Controller;`
+
+          if (!content.includes(resourceLine)) {
+            content += `\n${resourceLine}`
+          }
+          if (!content.includes(useLine)) {
+            content = content.replace('<?php', `<?php\n\n${useLine}`)
+          }
+        }
+        result.files.push({ outputPath: 'routes/api.php', content })
+      } else {
+        result.files.push({
+          outputPath: 'routes/api.php',
+          content: this.render('overlays/routes/api.php.hbs', routeCtx),
+        })
+      }
+    }
+
+    // DatabaseSeeder
+    const modelsWithSeeder = config.models.filter(m => m.generate.seeder)
+    if (modelsWithSeeder.length > 0) {
+      const seederPath = path.join(projectRoot, 'database/seeders/DatabaseSeeder.php')
+      const seederNames = modelsWithSeeder.map(m => `${m.name}Seeder::class`)
+
+      if (fs.existsSync(seederPath)) {
+        let content = fs.readFileSync(seederPath, 'utf-8')
+        for (const seeder of seederNames) {
+          if (!content.includes(seeder)) {
+            // Tentative d'insertion dans le tableau $this->call([...])
+            if (content.includes('$this->call([')) {
+              content = content.replace('$this->call([', `$this->call([\n            ${seeder},`)
+            } else {
+              result.warnings.push(`Impossible d'injecter automatiquement ${seeder} dans DatabaseSeeder.php. Ajoutez-le manuellement.`)
+            }
+          }
+        }
+        result.files.push({ outputPath: 'database/seeders/DatabaseSeeder.php', content })
+      } else {
+        const seederCtx = { seeders: seederNames }
+        result.files.push({
+          outputPath: 'database/seeders/DatabaseSeeder.php',
+          content: this.render('overlays/seeder/DatabaseSeeder.php.hbs', seederCtx),
+        })
+      }
     }
 
     return result
@@ -181,15 +225,5 @@ export class LaravelGenerator {
       this.cache.set(tpl, this.hbs.compile(src))
     }
     return this.cache.get(tpl)!(ctx)
-  }
-}
-
-export async function writeFiles(files: GeneratedFile[], root: string, dryRun = false): Promise<void> {
-  for (const file of files) {
-    const full = path.join(root, file.outputPath)
-    if (!dryRun) {
-      fs.mkdirSync(path.dirname(full), { recursive: true })
-      fs.writeFileSync(full, file.content, 'utf-8')
-    }
   }
 }

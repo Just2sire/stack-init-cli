@@ -1,0 +1,42 @@
+import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe } from '@nestjs/common';
+import { {{pascalName}}Service } from './{{kebabName}}.service';
+import { Create{{pascalName}}Dto } from './dto/create-{{kebabName}}.dto';
+import { Update{{pascalName}}Dto } from './dto/update-{{kebabName}}.dto';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+
+@ApiTags('{{pluralName}}')
+@Controller('{{pluralName}}')
+export class {{pascalName}}Controller {
+  constructor(private readonly {{camelName}}Service: {{pascalName}}Service) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create a new {{name}}' })
+  @ApiResponse({ status: 201, description: 'The record has been successfully created.' })
+  create(@Body() create{{pascalName}}Dto: Create{{pascalName}}Dto) {
+    return this.{{camelName}}Service.create(create{{pascalName}}Dto);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all {{pluralName}}' })
+  findAll() {
+    return this.{{camelName}}Service.findAll();
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a {{name}} by id' })
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.{{camelName}}Service.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a {{name}}' })
+  update(@Param('id', ParseIntPipe) id: number, @Body() update{{pascalName}}Dto: Update{{pascalName}}Dto) {
+    return this.{{camelName}}Service.update(id, update{{pascalName}}Dto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a {{name}}' })
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.{{camelName}}Service.remove(id);
+  }
+}

@@ -1,0 +1,138 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+{{#if (eq nestConfig.orm "typeorm")}}
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { {{pascalName}} } from './entities/{{kebabName}}.entity';
+{{else if (eq nestConfig.orm "mongoose")}}
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { {{pascalName}}, {{pascalName}}Document } from './entities/{{kebabName}}.entity';
+{{else if (eq nestConfig.orm "drizzle")}}
+import { Inject } from '@nestjs/common';
+import { DATABASE_CONNECTION } from '../database/database.module';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { {{camelName}}Table, {{pascalName}}, New{{pascalName}} } from './entities/{{kebabName}}.entity';
+import { eq } from 'drizzle-orm';
+{{else}}
+import { PrismaService } from '../prisma/prisma.service';
+import type { {{pascalName}} } from './entities/{{kebabName}}.entity';
+{{/if}}
+import { Create{{pascalName}}Dto } from './dto/create-{{kebabName}}.dto';
+import { Update{{pascalName}}Dto } from './dto/update-{{kebabName}}.dto';
+
+@Injectable()
+export class {{pascalName}}Service {
+  constructor(
+    {{#if (eq nestConfig.orm "typeorm")}}
+    @InjectRepository({{pascalName}})
+    private readonly repository: Repository<{{pascalName}}>,
+    {{else if (eq nestConfig.orm "mongoose")}}
+    @InjectModel({{pascalName}}.name)
+    private readonly model: Model<{{pascalName}}Document>,
+    {{else if (eq nestConfig.orm "drizzle")}}
+    @Inject(DATABASE_CONNECTION)
+    private readonly db: NodePgDatabase,
+    {{else}}
+    private readonly prisma: PrismaService,
+    {{/if}}
+  ) {}
+
+  {{#if (eq nestConfig.orm "typeorm")}}
+  async create(dto: Create{{pascalName}}Dto): Promise<{{pascalName}}> {
+    const record = this.repository.create(dto);
+    return this.repository.save(record);
+  }
+
+  async findAll(): Promise<{{pascalName}}[]> {
+    return this.repository.find();
+  }
+
+  async findOne(id: number): Promise<{{pascalName}}> {
+    const record = await this.repository.findOneBy({ id } as any);
+    if (!record) throw new NotFoundException(`{{name}} with ID ${id} not found`);
+    return record;
+  }
+
+  async update(id: number, dto: Update{{pascalName}}Dto): Promise<{{pascalName}}> {
+    const record = await this.findOne(id);
+    this.repository.merge(record, dto);
+    return this.repository.save(record);
+  }
+
+  async remove(id: number): Promise<void> {
+    const record = await this.findOne(id);
+    await this.repository.remove(record);
+  }
+  {{else if (eq nestConfig.orm "mongoose")}}
+  async create(dto: Create{{pascalName}}Dto): Promise<{{pascalName}}Document> {
+    return this.model.create(dto);
+  }
+
+  async findAll(): Promise<{{pascalName}}Document[]> {
+    return this.model.find().exec();
+  }
+
+  async findOne(id: string): Promise<{{pascalName}}Document> {
+    const record = await this.model.findById(id).exec();
+    if (!record) throw new NotFoundException(`{{name}} with ID ${id} not found`);
+    return record;
+  }
+
+  async update(id: string, dto: Update{{pascalName}}Dto): Promise<{{pascalName}}Document> {
+    const record = await this.model.findByIdAndUpdate(id, dto, { new: true }).exec();
+    if (!record) throw new NotFoundException(`{{name}} with ID ${id} not found`);
+    return record;
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.model.findByIdAndDelete(id).exec();
+  }
+  {{else if (eq nestConfig.orm "drizzle")}}
+  async create(dto: Create{{pascalName}}Dto): Promise<{{pascalName}}> {
+    const [record] = await this.db.insert({{camelName}}Table).values(dto as New{{pascalName}}).returning();
+    return record;
+  }
+
+  async findAll(): Promise<{{pascalName}}[]> {
+    return this.db.select().from({{camelName}}Table);
+  }
+
+  async findOne(id: number): Promise<{{pascalName}}> {
+    const [record] = await this.db.select().from({{camelName}}Table).where(eq({{camelName}}Table.id, id));
+    if (!record) throw new NotFoundException(`{{name}} with ID ${id} not found`);
+    return record;
+  }
+
+  async update(id: number, dto: Update{{pascalName}}Dto): Promise<{{pascalName}}> {
+    const [record] = await this.db.update({{camelName}}Table).set(dto).where(eq({{camelName}}Table.id, id)).returning();
+    if (!record) throw new NotFoundException(`{{name}} with ID ${id} not found`);
+    return record;
+  }
+
+  async remove(id: number): Promise<void> {
+    await this.db.delete({{camelName}}Table).where(eq({{camelName}}Table.id, id));
+  }
+  {{else}}
+  async create(dto: Create{{pascalName}}Dto): Promise<{{pascalName}}> {
+    return this.prisma.{{camelName}}.create({ data: dto });
+  }
+
+  async findAll(): Promise<{{pascalName}}[]> {
+    return this.prisma.{{camelName}}.findMany();
+  }
+
+  async findOne(id: number): Promise<{{pascalName}}> {
+    const record = await this.prisma.{{camelName}}.findUnique({ where: { id } });
+    if (!record) throw new NotFoundException(`{{name}} with ID ${id} not found`);
+    return record;
+  }
+
+  async update(id: number, dto: Update{{pascalName}}Dto): Promise<{{pascalName}}> {
+    return this.prisma.{{camelName}}.update({ where: { id }, data: dto });
+  }
+
+  async remove(id: number): Promise<void> {
+    await this.prisma.{{camelName}}.delete({ where: { id } });
+  }
+  {{/if}}
+}

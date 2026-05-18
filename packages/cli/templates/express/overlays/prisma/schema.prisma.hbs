@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "{{provider}}"
+  url      = env("DATABASE_URL")
+}
+
+{{#each models}}
+model {{name}} {
+  {{#each fields}}
+  {{name}} {{type}} {{attributes}}
+  {{/each}}
+
+  {{#each relations}}
+  {{#if (eq type "belongsTo")}}
+  {{camelCase model}} {{pascalCase model}} @relation(fields: [{{foreign_key}}], references: [{{#if owner_key}}{{owner_key}}{{else}}id{{/if}}])
+  {{/if}}
+  {{#if (eq type "hasMany")}}
+  {{camelCasePlural model}} {{pascalCase model}}[]
+  {{/if}}
+  {{/each}}
+
+  @@map("{{tableName}}")
+}
+
+{{/each}}

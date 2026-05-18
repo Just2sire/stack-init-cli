@@ -10,7 +10,7 @@ export type NamedField = z.infer<typeof NamedFieldSchema>
 export const RelationTypeSchema = z.enum([
   'hasOne', 'hasMany', 'belongsTo', 'belongsToMany',
   'hasOneThrough', 'hasManyThrough',
-  'morphOne', 'morphMany', 'morphTo', 'morphToMany',
+  'morphOne', 'morphMany', 'morphTo', 'morphToMany', 'morphedByMany',
 ])
 export type RelationType = z.infer<typeof RelationTypeSchema>
 
@@ -25,22 +25,26 @@ export const RelationSchema = z.object({
 })
 export type Relation = z.infer<typeof RelationSchema>
 
-export const LaravelGenerateOptionsSchema = z.object({
-  migration:  z.boolean().default(true),
-  controller: z.boolean().default(true),
-  resource:   z.boolean().default(true),
-  request:    z.boolean().default(true),
-  policy:     z.boolean().default(false),
-  factory:    z.boolean().default(true),
-  seeder:     z.boolean().default(false),
-  swagger:    z.boolean().default(false),
-  softDelete: z.boolean().default(false),
-  repository: z.boolean().default(false),
-  service:    z.boolean().default(false),
-  tests:      z.boolean().default(true),
-  routes:     z.boolean().default(true),
+export const GenerateOptionsSchema = z.object({
+  migration:   z.boolean().default(true),
+  controller:  z.boolean().default(true),
+  resource:    z.boolean().default(true),
+  request:     z.boolean().default(true),
+  policy:      z.boolean().default(false),
+  factory:     z.boolean().default(true),
+  seeder:      z.boolean().default(false),
+  swagger:     z.boolean().default(false),
+  softDelete:  z.boolean().default(false),
+  repository:  z.boolean().default(false),
+  service:     z.boolean().default(false),
+  tests:       z.boolean().default(true),
+  routes:      z.boolean().default(false),
+  // Nouveaux
+  dto:         z.boolean().default(true),   // NestJS : CreateDto + UpdateDto
+  module:      z.boolean().default(true),   // NestJS : module dédié
+  schema:      z.boolean().default(true),   // Express Prisma : bloc model dans schema.prisma
 })
-export type LaravelGenerateOptions = z.infer<typeof LaravelGenerateOptionsSchema>
+export type GenerateOptions = z.infer<typeof GenerateOptionsSchema>
 
 export const MigrationOptionsSchema = z.object({
   timestamps:    z.boolean().default(true),
@@ -60,7 +64,7 @@ export const ModelSchema = z.object({
   fields:    z.array(NamedFieldSchema).min(1, 'Un modèle doit avoir au moins un champ'),
   relations: z.array(RelationSchema).default([]),
   migration: MigrationOptionsSchema.default({}),
-  generate:  LaravelGenerateOptionsSchema.default({}),
+  generate:  GenerateOptionsSchema.default({}),
 })
 export type Model = z.infer<typeof ModelSchema>
 

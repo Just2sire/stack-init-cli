@@ -1,28 +1,36 @@
 {
-  "name": "stack-init",
+  "name": "stack-init-cli",
   "version": "0.1.0",
   "bin": {
     "stack-init": "./dist/index.js"
   },
   "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "templates"
+  ],
   "scripts": {
-    "build": "tsc -b",
-    "dev": "tsc -b --watch",
+    "build": "node build.mjs",
+    "dev": "node build.mjs",
+    "test": "vitest run",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@stack-init/schema": "workspace:*",
+    "adm-zip": "^0.5.17",
     "commander": "^12.0.0",
     "handlebars": "^4.7.8",
     "js-yaml": "^4.1.0",
-    "picocolors": "^1.0.1",
-    "ora": "^5.4.1"
+    "ora": "^5.4.1",
+    "picocolors": "^1.0.1"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/handlebars": "^4.1.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
+    "esbuild": "^0.28.0",
+    "rimraf": "^5.0.0",
     "typescript": "^5.4.0",
-    "rimraf": "^5.0.0"
+    "vitest": "^1.6.0"
   }
 }

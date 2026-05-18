@@ -1,0 +1,85 @@
+{{#if (eq nestConfig.orm "typeorm")}}
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn{{#if relations}}, ManyToOne, OneToMany{{/if}} } from 'typeorm';
+
+@Entity('{{tableName}}')
+export class {{pascalName}} {
+  {{#each fields}}
+  {{#if (eq type "id")}}
+  @PrimaryGeneratedColumn()
+  id: number;
+  {{else if (eq type "uuid")}}
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+  {{else}}
+  @Column({
+    name: '{{name}}',
+    type: '{{#if (eq tsType "number")}}int{{else if (eq tsType "boolean")}}boolean{{else}}varchar{{/if}}',
+    nullable: {{#if nullable}}true{{else}}false{{/if}},
+    {{#if unique}}unique: true,{{/if}}
+  })
+  {{name}}: {{tsType}};
+
+  {{/if}}
+  {{/each}}
+
+  {{#if nestConfig.timestamps}}
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+  {{/if}}
+
+  {{#if nestConfig.softDeletes}}
+  @DeleteDateColumn()
+  deletedAt: Date;
+  {{/if}}
+
+  {{#each relations}}
+  {{#if (eq type "belongsTo")}}
+  @ManyToOne(() => {{pascalCase model}}, ({{camelCase model}}) => {{camelCase model}}.{{camelCasePlural ../name}})
+  {{camelCase model}}: any;
+  {{/if}}
+  {{#if (eq type "hasMany")}}
+  @OneToMany(() => {{pascalCase model}}, ({{camelCase model}}) => {{camelCase model}}.{{camelCase ../name}})
+  {{camelCasePlural model}}: any[];
+  {{/if}}
+  {{/each}}
+}
+{{else if (eq nestConfig.orm "mongoose")}}
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
+
+export type {{pascalName}}Document = {{pascalName}} & Document;
+
+@Schema({ collection: '{{tableName}}', timestamps: true })
+export class {{pascalName}} {
+  {{#each fields}}
+  {{#unless (eq type "id")}}
+  @Prop({{#if nullable}}{ required: false }{{else}}{ required: true }{{/if}})
+  {{name}}: {{tsType}};
+
+  {{/unless}}
+  {{/each}}
+}
+
+export const {{pascalName}}Schema = SchemaFactory.createForClass({{pascalName}});
+{{else if (eq nestConfig.orm "drizzle")}}
+import { pgTable, serial, varchar, boolean, integer, timestamp, text } from 'drizzle-orm/pg-core';
+
+export const {{camelName}}Table = pgTable('{{tableName}}', {
+  id: serial('id').primaryKey(),
+  {{#each fields}}
+  {{#unless (eq type "id")}}
+  {{name}}: {{#if (eq tsType "string")}}varchar('{{name}}', { length: 255 }){{else if (eq tsType "number")}}integer('{{name}}'){{else if (eq tsType "boolean")}}boolean('{{name}}'){{else if (eq tsType "Date")}}timestamp('{{name}}'){{else}}text('{{name}}'){{/if}}{{#unless nullable}}.notNull(){{/unless}},
+  {{/unless}}
+  {{/each}}
+});
+
+export type {{pascalName}} = typeof {{camelName}}Table.$inferSelect;
+export type New{{pascalName}} = typeof {{camelName}}Table.$inferInsert;
+{{else}}
+// Prisma manages the {{pascalName}} model via prisma/schema.prisma
+// Re-export the generated type for use in services and controllers
+export type { {{pascalName}} } from '@prisma/client';
+{{/if}}

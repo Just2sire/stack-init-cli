@@ -1,0 +1,18 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsInt, IsBoolean, IsOptional, IsNotEmpty } from 'class-validator';
+
+export class Create{{pascalName}}Dto {
+  {{#each fields}}
+  {{#if (neq type "id")}}
+  {{#if (neq type "uuid")}}
+  @ApiProperty({ description: '{{name}} of the {{../name}}' })
+  {{#if nullable}}@IsOptional(){{else}}@IsNotEmpty(){{/if}}
+  {{#if (eq tsType "string")}}@IsString(){{/if}}
+  {{#if (eq tsType "number")}}@IsInt(){{/if}}
+  {{#if (eq tsType "boolean")}}@IsBoolean(){{/if}}
+  {{name}}{{#if nullable}}?{{/if}}: {{tsType}};
+
+  {{/if}}
+  {{/if}}
+  {{/each}}
+}

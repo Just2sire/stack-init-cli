@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npm view *)",
+      "PowerShell(npm config *)"
+    ]
+  }
+}

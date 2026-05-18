@@ -1,0 +1,18 @@
+import mongoose, { Schema, Document } from 'mongoose';
+
+export interface I{{pascalName}} extends Document {
+{{#each fields}}
+  {{name}}: any;
+{{/each}}
+}
+
+const {{pascalName}}Schema: Schema = new Schema(
+  {
+{{#each fields}}
+    {{name}}: { type: Schema.Types.Mixed, required: {{#unless nullable}}true{{else}}false{{/unless}} },
+{{/each}}
+  },
+  { timestamps: true }
+);
+
+export const {{pascalName}} = mongoose.model<I{{pascalName}}>('{{pascalName}}', {{pascalName}}Schema);

@@ -1,0 +1,22 @@
+import { Module } from '@nestjs/common';
+{{#if (eq nestConfig.orm "typeorm")}}
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { {{pascalName}} } from './entities/{{kebabName}}.entity';
+{{else if (eq nestConfig.orm "mongoose")}}
+import { MongooseModule } from '@nestjs/mongoose';
+import { {{pascalName}}, {{pascalName}}Schema } from './entities/{{kebabName}}.entity';
+{{/if}}
+import { {{pascalName}}Service } from './{{kebabName}}.service';
+import { {{pascalName}}Controller } from './{{kebabName}}.controller';
+
+@Module({
+  {{#if (eq nestConfig.orm "typeorm")}}
+  imports: [TypeOrmModule.forFeature([{{pascalName}}])],
+  {{else if (eq nestConfig.orm "mongoose")}}
+  imports: [MongooseModule.forFeature([{ name: {{pascalName}}.name, schema: {{pascalName}}Schema }])],
+  {{/if}}
+  controllers: [{{pascalName}}Controller],
+  providers: [{{pascalName}}Service],
+  exports: [{{pascalName}}Service],
+})
+export class {{pascalName}}Module {}

@@ -185,8 +185,10 @@ export function fieldToFaker(field: NamedField): string {
     case 'macAddress':  return `fake()->macAddress()`
     case 'json': case 'jsonb': return `[]`
     case 'enum':        return `fake()->randomElement([${field.values.map(v => `'${v}'`).join(', ')}])`
-    case 'foreignId': case 'foreignUuid': case 'foreignUlid':
-      return `null // TODO: remplace par le factory du modèle lié`
+    case 'foreignId':
+      return `fake()->randomDigitNotNull()`
+    case 'foreignUuid': case 'foreignUlid':
+      return `fake()->uuid()`
     default:            return `null`
   }
 }

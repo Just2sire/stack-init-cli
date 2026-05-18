@@ -1,0 +1,29 @@
+import { {{pascalName}}Repository } from '../repositories/{{name}}.repository';
+
+export class {{pascalName}}Service {
+  private repository: {{pascalName}}Repository;
+
+  constructor() {
+    this.repository = new {{pascalName}}Repository();
+  }
+
+  async getAll{{pluralName}}() {
+    return this.repository.findAll();
+  }
+
+  async get{{pascalName}}ById(id: any) {
+    return this.repository.findById(id);
+  }
+
+  async create{{pascalName}}(data: any) {
+    return this.repository.create(data);
+  }
+
+  async update{{pascalName}}(id: any, data: any) {
+    return this.repository.update(id, data);
+  }
+
+  async delete{{pascalName}}(id: any) {
+    return this.repository.delete(id);
+  }
+}
