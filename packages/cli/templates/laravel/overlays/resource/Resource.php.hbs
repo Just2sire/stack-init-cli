@@ -14,7 +14,8 @@ class {{name}}Resource extends JsonResource
         return [
             'id'         => $this->id,
 {{#each resourceFields}}
-            '{{name}}'{{spaces name}}=> $this->{{name}},
+            '{{name}}' => $this->{{name}},
+            {{!-- '{{name}}'{{spaces name}}=> $this->{{name}}, --}}
 {{/each}}
 {{#if migration.timestamps}}
             'created_at' => $this->created_at?->toISOString(),

@@ -7,8 +7,8 @@ const program = new Command()
 
 program
   .name('stack-init')
-  .description('Génère modèles, migrations et fichiers Laravel depuis stack-init.yaml')
-  .version('0.1.0')
+  .description('Scaffolde modèles, migrations et fichiers pour Laravel, Express, NestJS, FastAPI et Next.js depuis stack-init.yaml')
+  .version('0.1.2')
 
 program
   .command('generate')

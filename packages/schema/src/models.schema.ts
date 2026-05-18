@@ -70,6 +70,7 @@ export type Model = z.infer<typeof ModelSchema>
 
 export function validateForeignKeys(models: Model[]): { valid: boolean; errors: string[] } {
   const modelNames = new Set(models.map(m => m.name))
+  const modelTables = new Set(models.filter(m => m.table).map(m => m.table as string))
   const errors: string[] = []
 
   for (const model of models) {
@@ -84,7 +85,7 @@ export function validateForeignKeys(models: Model[]): { valid: boolean; errors: 
           .replace(/^./, c => c.toUpperCase())
           .replace(/s$/, '')
 
-        if (!modelNames.has(inferredModel) && !modelNames.has(tableName)) {
+        if (!modelNames.has(inferredModel) && !modelNames.has(tableName) && !modelTables.has(tableName)) {
           errors.push(
             `[${model.name}.${'name' in field ? field.name : ''}] foreignId référence "${tableName}" mais aucun modèle trouvé.`
           )
