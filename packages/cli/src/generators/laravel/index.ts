@@ -10,6 +10,17 @@ import { resolveTemplatesDir } from '../../utils/template-path'
 
 const TEMPLATES_DIR = resolveTemplatesDir('laravel')
 
+// Tables créées par les migrations par défaut de Laravel — on évite de régénérer Schema::create
+const LARAVEL_DEFAULT_TABLES = new Set([
+  'users', 'password_reset_tokens', 'failed_jobs', 'personal_access_tokens',
+])
+
+// Champs déjà présents dans ces migrations par défaut
+const LARAVEL_DEFAULT_FIELDS: Record<string, Set<string>> = {
+  users:                  new Set(['name', 'email', 'email_verified_at', 'password', 'remember_token']),
+  password_reset_tokens:  new Set(['email', 'token']),
+}
+
 export interface GeneratorResult {
   files: GeneratedFile[]
   warnings: string[]
@@ -159,10 +170,31 @@ export class LaravelGenerator {
 
     // Migration
     if (model.generate.migration) {
-      files.push({
-        outputPath: `database/migrations/${migrationTimestamp(index)}_create_${ctx.tableName}_table.php`,
-        content: this.render('overlays/migration/migration.php.hbs', ctx),
-      })
+      const tableName = ctx.tableName as string
+      if (LARAVEL_DEFAULT_TABLES.has(tableName)) {
+        // Laravel fournit déjà une migration pour cette table — générer uniquement les champs supplémentaires
+        const defaultFields = LARAVEL_DEFAULT_FIELDS[tableName] ?? new Set<string>()
+        const extraFields = model.fields.filter(
+          f => !defaultFields.has(f.name) && f.type !== 'rememberToken'
+        )
+        if (extraFields.length > 0) {
+          files.push({
+            outputPath: `database/migrations/${migrationTimestamp(index + 100)}_add_custom_fields_to_${tableName}_table.php`,
+            content: this.render('overlays/migration/alter-migration.php.hbs', { ...ctx, fields: extraFields }),
+          })
+        }
+        warnings.push(
+          `Skipped "create_${tableName}_table" migration — Laravel already provides one.` +
+          (extraFields.length > 0
+            ? ` Generated alter migration for ${extraFields.length} extra field(s): ${extraFields.map(f => f.name).join(', ')}.`
+            : ' No extra fields to add.')
+        )
+      } else {
+        files.push({
+          outputPath: `database/migrations/${migrationTimestamp(index)}_create_${tableName}_table.php`,
+          content: this.render('overlays/migration/migration.php.hbs', ctx),
+        })
+      }
     }
 
     // Controller — toujours
