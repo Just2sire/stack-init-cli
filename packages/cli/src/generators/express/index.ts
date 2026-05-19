@@ -24,13 +24,14 @@ export class ExpressGenerator {
 
   async generate(config: ProjectConfig, projectRoot: string): Promise<GeneratorResult> {
     const result: GeneratorResult = { files: [], warnings: [] }
-    
+
     if (!config.express) {
       result.warnings.push('Express configuration is missing.')
       return result
     }
 
     const orm = config.express.orm ?? 'none'
+    const auth = config.express.auth ?? 'none'
 
     // Generate Prisma Schema
     if (orm === 'prisma') {
@@ -61,20 +62,33 @@ export class ExpressGenerator {
       }
     }
 
+    // Auth service generation
+    if (auth !== 'none') {
+      const hasUserModel = config.models.some(m => m.name.toLowerCase() === 'user')
+      if (!hasUserModel) {
+        result.warnings.push('Auth is enabled but no "User" model found. The auth service references a User model — add one or adjust auth.service.ts manually.')
+      }
+      result.files.push(...this.generateAuthFiles(config))
+    }
+
+    // .env.example
+    result.files.push(this.generateEnvExample(config))
+
     // Smart injection for routes
     const routesPath = path.join(projectRoot, 'src/routes/index.ts')
     const modelsWithRoutes = config.models.filter(m => m.generate.routes)
+    const includeAuthRoute = auth !== 'none'
 
-    if (modelsWithRoutes.length > 0) {
+    if (modelsWithRoutes.length > 0 || includeAuthRoute) {
       if (fs.existsSync(routesPath)) {
         let content = fs.readFileSync(routesPath, 'utf-8')
+
         for (const model of modelsWithRoutes) {
           const importName = `${modelToVarName(model.name)}Routes`
           const importLine = `import ${importName} from './${model.name.toLowerCase()}.routes';`
           const useLine    = `router.use('/${modelToRouteName(model.name)}', ${importName});`
 
           if (!content.includes(importLine)) {
-            // Insert after the last import or after 'import { Router }'
             const lines = content.split('\n')
             const lastImportIndex = lines.reduce((last, line, idx) => line.startsWith('import') ? idx : last, -1)
             lines.splice(lastImportIndex + 1, 0, importLine)
@@ -82,7 +96,6 @@ export class ExpressGenerator {
           }
 
           if (!content.includes(useLine)) {
-            // Insert before 'export default' or at the end
             if (content.includes('export default')) {
               content = content.replace('export default', `${useLine}\n\nexport default`)
             } else {
@@ -90,27 +103,39 @@ export class ExpressGenerator {
             }
           }
         }
+
+        if (includeAuthRoute) {
+          const authImport = `import authRoutes from './auth.routes';`
+          const authUse    = `router.use('/auth', authRoutes);`
+          if (!content.includes(authImport)) {
+            const lines = content.split('\n')
+            const lastImportIndex = lines.reduce((last, line, idx) => line.startsWith('import') ? idx : last, -1)
+            lines.splice(lastImportIndex + 1, 0, authImport)
+            content = lines.join('\n')
+          }
+          if (!content.includes(authUse)) {
+            content = content.includes('export default')
+              ? content.replace('export default', `${authUse}\n\nexport default`)
+              : content + `\n${authUse}`
+          }
+        }
+
         result.files.push({ outputPath: 'src/routes/index.ts', content })
       } else {
-        const routeCtx = {
-          models: modelsWithRoutes.map(m => ({
-            name: m.name,
-            varName: `${modelToVarName(m.name)}Routes`,
-            routeName: modelToRouteName(m.name),
-            fileName: m.name.toLowerCase()
-          }))
-        }
-        // Simplified inline template for index.ts if it doesn't exist
+        const allModels = modelsWithRoutes.map(m => ({
+          varName: `${modelToVarName(m.name)}Routes`,
+          routeName: modelToRouteName(m.name),
+          fileName: m.name.toLowerCase()
+        }))
+
         let content = `import { Router } from 'express';\n`
-        routeCtx.models.forEach(m => {
-          content += `import ${m.varName} from './${m.fileName}.routes';\n`
-        })
+        allModels.forEach(m => { content += `import ${m.varName} from './${m.fileName}.routes';\n` })
+        if (includeAuthRoute) content += `import authRoutes from './auth.routes';\n`
         content += `\nconst router = Router();\n\n`
-        routeCtx.models.forEach(m => {
-          content += `router.use('/${m.routeName}', ${m.varName});\n`
-        })
+        allModels.forEach(m => { content += `router.use('/${m.routeName}', ${m.varName});\n` })
+        if (includeAuthRoute) content += `router.use('/auth', authRoutes);\n`
         content += `\nexport default router;\n`
-        
+
         result.files.push({ outputPath: 'src/routes/index.ts', content })
       }
     }
@@ -293,12 +318,192 @@ export class ExpressGenerator {
     if (!this.cache.has(tpl)) {
       const fullPath = path.join(TEMPLATES_DIR, tpl)
       if (!fs.existsSync(fullPath)) {
-        // Fallback for missing templates during development
         return `// Template not found: ${tpl}`
       }
       const src = fs.readFileSync(fullPath, 'utf-8')
       this.cache.set(tpl, this.hbs.compile(src))
     }
     return this.cache.get(tpl)!(ctx)
+  }
+
+  // ── Auth generation ───────────────────────────────────────────────
+
+  private generateEnvExample(config: ProjectConfig): GeneratedFile {
+    const orm    = config.express?.orm ?? 'none'
+    const auth   = config.express?.auth ?? 'none'
+    const db     = config.express?.db_engine ?? 'postgresql'
+    const port   = config.express?.port ?? 3000
+    const name   = config.name
+
+    let dbLine = ''
+    if (orm === 'mongoose') {
+      dbLine = `MONGODB_URI="mongodb://localhost:27017/${name}"`
+    } else if (['prisma', 'sequelize', 'typeorm', 'knex'].includes(orm)) {
+      if (db === 'postgresql') dbLine = `DATABASE_URL="postgresql://user:password@localhost:5432/${name}"`
+      else if (db === 'mysql')  dbLine = `DATABASE_URL="mysql://user:password@localhost:3306/${name}"`
+      else if (db === 'sqlite') dbLine = `DATABASE_URL="file:./dev.db"`
+      else if (db === 'mongodb') dbLine = `DATABASE_URL="mongodb://localhost:27017/${name}"`
+    }
+
+    const lines = [
+      `NODE_ENV=development`,
+      `PORT=${port}`,
+      dbLine,
+      ...(auth !== 'none' ? [
+        `JWT_SECRET="change-me-in-production"`,
+        `JWT_EXPIRES_IN="7d"`,
+      ] : []),
+    ].filter(Boolean)
+
+    return { outputPath: '.env.example', content: lines.join('\n') + '\n' }
+  }
+
+  private generateAuthFiles(config: ProjectConfig): GeneratedFile[] {
+    const orm  = config.express?.orm ?? 'prisma'
+    return [
+      { outputPath: 'src/services/auth.service.ts',    content: this.authService(orm) },
+      { outputPath: 'src/controllers/auth.controller.ts', content: this.authController() },
+      { outputPath: 'src/middleware/auth.middleware.ts',  content: this.authMiddleware() },
+      { outputPath: 'src/routes/auth.routes.ts',          content: this.authRoutes() },
+    ]
+  }
+
+  private authService(orm: string): string {
+    const userAccess = orm === 'mongoose'
+      ? `import { User } from '../models/user.model';`
+      : `import { PrismaClient } from '@prisma/client';\nconst prisma = new PrismaClient();`
+
+    const findByEmail = orm === 'mongoose'
+      ? `const user = await User.findOne({ email });`
+      : `const user = await prisma.user.findUnique({ where: { email } });`
+
+    const checkDuplicate = orm === 'mongoose'
+      ? `const existing = await User.findOne({ email: data.email });`
+      : `const existing = await prisma.user.findUnique({ where: { email: data.email } });`
+
+    const createUser = orm === 'mongoose'
+      ? `const user = await User.create({ ...data, password: hashed });
+    return { id: user._id, name: user.name, email: user.email };`
+      : `const user = await prisma.user.create({
+      data: { ...data, password: hashed },
+      select: { id: true, name: true, email: true },
+    });
+    return user;`
+
+    const findById = orm === 'mongoose'
+      ? `return User.findById(id).select('-password');`
+      : `return prisma.user.findUnique({ where: { id }, select: { id: true, name: true, email: true } });`
+
+    const returnLogin = orm === 'mongoose'
+      ? `{ id: user._id, name: user.name, email: user.email }`
+      : `{ id: user.id, name: user.name, email: user.email }`
+
+    return `import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+${userAccess}
+
+export interface RegisterDto { name: string; email: string; password: string; }
+export interface LoginDto    { email: string; password: string; }
+
+export class AuthService {
+  async register(data: RegisterDto) {
+    ${checkDuplicate}
+    if (existing) throw new Error('Email already in use');
+    const hashed = await bcrypt.hash(data.password, 10);
+    ${createUser}
+  }
+
+  async login(data: LoginDto) {
+    ${findByEmail}
+    if (!user) throw new Error('Invalid credentials');
+    const valid = await bcrypt.compare(data.password, user.password as string);
+    if (!valid) throw new Error('Invalid credentials');
+    const token = jwt.sign({ id: ${orm === 'mongoose' ? 'user._id' : 'user.id'} }, process.env.JWT_SECRET as string, {
+      expiresIn: (process.env.JWT_EXPIRES_IN ?? '7d') as string,
+    });
+    return { token, user: ${returnLogin} };
+  }
+
+  async getById(id: any) {
+    ${findById}
+  }
+}
+`
+  }
+
+  private authController(): string {
+    return `import { Request, Response } from 'express';
+import { AuthService } from '../services/auth.service';
+
+const authService = new AuthService();
+
+export const register = async (req: Request, res: Response) => {
+  try {
+    const user = await authService.register(req.body);
+    res.status(201).json({ message: 'Account created', user });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+export const login = async (req: Request, res: Response) => {
+  try {
+    const result = await authService.login(req.body);
+    res.json(result);
+  } catch (error: any) {
+    res.status(401).json({ error: error.message });
+  }
+};
+
+export const me = async (req: Request & { user?: any }, res: Response) => {
+  try {
+    const user = await authService.getById(req.user?.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json(user);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+`
+  }
+
+  private authMiddleware(): string {
+    return `import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+
+export interface AuthRequest extends Request {
+  user?: { id: any };
+}
+
+export const authenticate = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+  }
+  const token = header.slice(7);
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET as string) as { id: any };
+    req.user = { id: payload.id };
+    next();
+  } catch {
+    res.status(401).json({ error: 'Token invalid or expired' });
+  }
+};
+`
+  }
+
+  private authRoutes(): string {
+    return `import { Router } from 'express';
+import { register, login, me } from '../controllers/auth.controller';
+import { authenticate } from '../middleware/auth.middleware';
+
+const router = Router();
+
+router.post('/register', register);
+router.post('/login',    login);
+router.get('/me',        authenticate, me);
+
+export default router;
+`
   }
 }

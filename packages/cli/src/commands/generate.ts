@@ -28,9 +28,17 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
   // 2. Validation Zod
   const parsed = parseProjectConfig(raw)
   if (!parsed.success) {
-    console.error(pc.red('\n  ✗ Erreurs dans stack-init.yaml :'))
-    parsed.errors.forEach(e => console.error(pc.red(`    ${e}`)))
-    console.error()
+    console.error(pc.red(`\n  ✗ stack-init.yaml invalide — ${parsed.errors.length} erreur(s) :\n`))
+    parsed.errors.forEach((e, i) => {
+      // Try to detect the field path from common Zod error patterns
+      const fieldMatch = e.match(/^([a-z_.[\]0-9]+):\s*(.+)$/i)
+      if (fieldMatch) {
+        console.error(`  ${pc.red(`${i + 1}.`)} ${pc.yellow(fieldMatch[1])} — ${fieldMatch[2]}`)
+      } else {
+        console.error(`  ${pc.red(`${i + 1}.`)} ${e}`)
+      }
+    })
+    console.error(pc.dim('\n  Astuce : lancez "stack-init validate" pour une analyse détaillée.\n'))
     process.exit(1)
   }
 

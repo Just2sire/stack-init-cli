@@ -1,6 +1,6 @@
 {
   "name": "stack-init-cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "bin": {
     "stack-init-cli": "./dist/index.js"
   },

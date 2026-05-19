@@ -2,6 +2,8 @@ import { Command } from 'commander'
 import { runGenerate } from './commands/generate'
 import { runAdd } from './commands/add'
 import { runRollback } from './commands/rollback'
+import { runValidate } from './commands/validate'
+import { runDiff } from './commands/diff'
 
 const program = new Command()
 
@@ -43,6 +45,23 @@ program
   .option('-o, --output <path>', 'Racine du projet cible', '.')
   .action(async (opts) => {
     await runRollback({ output: opts.output })
+  })
+
+program
+  .command('validate')
+  .description('Valide stack-init.yaml sans générer de fichiers')
+  .option('-c, --config <path>', 'Chemin vers stack-init.yaml', 'stack-init.yaml')
+  .action(async (opts) => {
+    await runValidate({ config: opts.config })
+  })
+
+program
+  .command('diff')
+  .description('Affiche les fichiers qui seraient générés (dry-run visuel)')
+  .option('-c, --config <path>', 'Chemin vers stack-init.yaml', 'stack-init.yaml')
+  .option('-o, --output <path>', 'Racine du projet cible', '.')
+  .action(async (opts) => {
+    await runDiff({ config: opts.config, output: opts.output })
   })
 
 program.parse()

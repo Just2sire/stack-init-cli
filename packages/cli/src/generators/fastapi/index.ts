@@ -67,8 +67,16 @@ export class FastAPIGenerator {
     const dbUrlDefault = opts?.db_engine === 'mysql'
       ? `mysql+pymysql://user:password@localhost:3306/${projectName}`
       : `postgresql://user:password@localhost:5432/${projectName}`
-    result.files.push({ outputPath: '.env.example', content: `DATABASE_URL="${dbUrlDefault}"\nSECRET_KEY="change-me-in-production"\n` })
-    result.files.push({ outputPath: '.env', content: `DATABASE_URL="${dbUrlDefault}"\nSECRET_KEY="stack-init-dev-secret"\n` })
+
+    const envExampleLines = [
+      `DATABASE_URL="${dbUrlDefault}"`,
+      ...(auth !== 'none' ? [
+        `SECRET_KEY="change-me-in-production"`,
+        `ACCESS_TOKEN_EXPIRE_MINUTES="30"`,
+      ] : []),
+    ]
+    result.files.push({ outputPath: '.env.example', content: envExampleLines.join('\n') + '\n' })
+    result.files.push({ outputPath: '.env', content: `DATABASE_URL="${dbUrlDefault}"\nSECRET_KEY="stack-init-dev-secret"\nACCESS_TOKEN_EXPIRE_MINUTES="30"\n` })
 
     // database.py
     result.files.push({ outputPath: 'app/database.py', content: generateDatabase(orm, asyncMode) })
@@ -99,6 +107,18 @@ export class FastAPIGenerator {
           content: generateRouter(model, orm, asyncMode),
         })
       }
+    }
+
+    // Auth service generation
+    if (auth !== 'none') {
+      const hasUserModel = config.models.some(m => m.name.toLowerCase() === 'user')
+      if (!hasUserModel) {
+        result.warnings.push('Auth is enabled but no "User" model found. The auth router references a User model — add one or adjust auth files manually.')
+      }
+      result.files.push({ outputPath: 'app/core/__init__.py',  content: '' })
+      result.files.push({ outputPath: 'app/core/security.py',  content: generateAuthSecurity() })
+      result.files.push({ outputPath: 'app/dependencies.py',   content: generateDependencies(orm) })
+      result.files.push({ outputPath: 'app/routers/auth.py',   content: generateAuthRouter(orm, asyncMode) })
     }
 
     // Alembic scaffold (if sqlalchemy + migrations)
@@ -171,14 +191,19 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dev.db")
 function generateMain(config: ProjectConfig, useCors: boolean, useSwagger: boolean, _asyncMode: boolean): string {
   const opts = config.fastapi
   const models = config.models
-  const routerImports = models
-    .filter(m => (m.generate?.routes !== false) && (m.generate?.controller !== false))
-    .map(m => `from app.routers import ${modelToSnake(m.name)}`)
-    .join('\n')
-  const includeRouters = models
-    .filter(m => (m.generate?.routes !== false) && (m.generate?.controller !== false))
-    .map(m => `app.include_router(${modelToSnake(m.name)}.router)`)
-    .join('\n')
+  const auth = opts?.auth ?? 'none'
+  const routerImports = [
+    ...models
+      .filter(m => (m.generate?.routes !== false) && (m.generate?.controller !== false))
+      .map(m => `from app.routers import ${modelToSnake(m.name)}`),
+    ...(auth !== 'none' ? [`from app.routers import auth as auth_router`] : []),
+  ].join('\n')
+  const includeRouters = [
+    ...models
+      .filter(m => (m.generate?.routes !== false) && (m.generate?.controller !== false))
+      .map(m => `app.include_router(${modelToSnake(m.name)}.router)`),
+    ...(auth !== 'none' ? [`app.include_router(auth_router.router, prefix="/auth", tags=["auth"])`] : []),
+  ].join('\n')
 
   const ormSetup = opts?.orm === 'sqlmodel'
     ? `\n@app.on_event("startup")\ndef on_startup():\n    create_db_and_tables()\n`
@@ -513,5 +538,143 @@ makemigrations:
 
 test:
 \tpytest
+`
+}
+
+function generateAuthSecurity(): string {
+  return `import os
+from datetime import datetime, timedelta
+from typing import Optional
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+
+SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_token(token: str) -> dict:
+    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+`
+}
+
+function generateDependencies(orm: string): string {
+  const sessionDep = orm === 'sqlmodel'
+    ? `from app.database import get_session
+from sqlmodel import Session`
+    : `from app.database import get_db
+from sqlalchemy.orm import Session`
+
+  const sessionParam = orm === 'sqlmodel' ? `Session = Depends(get_session)` : `db: Session = Depends(get_db)`
+  const userQuery = orm === 'sqlmodel'
+    ? `user = session.get(User, payload.get("sub"))`
+    : `user = db.query(User).filter(User.id == payload.get("sub")).first()`
+
+  return `from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError
+${sessionDep}
+from app.core.security import decode_token
+from app.models.user import User
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), ${sessionParam}) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    ${userQuery}
+    if user is None:
+        raise credentials_exception
+    return user
+`
+}
+
+function generateAuthRouter(orm: string, asyncMode: boolean): string {
+  const asyncKw = asyncMode ? 'async ' : ''
+  const sessionDep = orm === 'sqlmodel'
+    ? `from app.database import get_session\nfrom sqlmodel import Session, select`
+    : `from app.database import get_db\nfrom sqlalchemy.orm import Session`
+
+  const sessionParam = orm === 'sqlmodel' ? `session: Session = Depends(get_session)` : `db: Session = Depends(get_db)`
+
+  const findByEmail = orm === 'sqlmodel'
+    ? `session.exec(select(User).where(User.email == data.username)).first()`
+    : `db.query(User).filter(User.email == data.username).first()`
+
+  const createUser = orm === 'sqlmodel'
+    ? `session.add(new_user)\n    session.commit()\n    session.refresh(new_user)`
+    : `db.add(new_user)\n    db.commit()\n    db.refresh(new_user)`
+
+  const checkExisting = orm === 'sqlmodel'
+    ? `session.exec(select(User).where(User.email == body.email)).first()`
+    : `db.query(User).filter(User.email == body.email).first()`
+
+  return `from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
+${sessionDep}
+from app.models.user import User
+from app.core.security import hash_password, verify_password, create_access_token
+from app.dependencies import get_current_user
+
+router = APIRouter()
+
+
+class RegisterBody(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+@router.post("/register", status_code=201)
+${asyncKw}def register(body: RegisterBody, ${sessionParam}):
+    existing = ${checkExisting}
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already in use")
+    new_user = User(name=body.name, email=body.email, password=hash_password(body.password))
+    ${createUser}
+    return {"message": "Account created", "user": {"id": new_user.id, "name": new_user.name, "email": new_user.email}}
+
+
+@router.post("/login")
+${asyncKw}def login(form: OAuth2PasswordRequestForm = Depends(), ${sessionParam}):
+    user = ${findByEmail}
+    if not user or not verify_password(form.password, user.password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    token = create_access_token({"sub": str(user.id)})
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@router.get("/me")
+${asyncKw}def me(current_user: User = Depends(get_current_user)):
+    return {"id": current_user.id, "name": current_user.name, "email": current_user.email}
 `
 }

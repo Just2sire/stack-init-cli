@@ -23,15 +23,30 @@ export class LaravelGenerator {
 
   async generate(config: ProjectConfig, projectRoot: string): Promise<GeneratorResult> {
     const result: GeneratorResult = { files: [], warnings: [] }
+
+    const laravelAuth = config.laravel?.auth ?? 'none'
+
     for (let i = 0; i < config.models.length; i++) {
       const r = await this.generateModel(config.models[i], config, i)
       result.files.push(...r.files)
       result.warnings.push(...r.warnings)
     }
 
+    // Auth service generation
+    if (laravelAuth !== 'none') {
+      const hasUserModel = config.models.some(m => m.name.toLowerCase() === 'user')
+      if (!hasUserModel) {
+        result.warnings.push('Auth is enabled but no "User" model found. The AuthController references the User model — add one or adjust manually.')
+      }
+      result.files.push(...this.generateAuthFiles(config))
+    }
+
+    // .env.example
+    result.files.push(this.generateEnvExample(config))
+
     // Routes
     const modelsWithRoutes = config.models.filter(m => m.generate.routes)
-    if (modelsWithRoutes.length > 0) {
+    if (modelsWithRoutes.length > 0 || laravelAuth !== 'none') {
       const routePath = path.join(projectRoot, 'routes/api.php')
       const routeCtx = {
         models: modelsWithRoutes.map(m => ({
@@ -48,7 +63,6 @@ export class LaravelGenerator {
           const useLine = `use App\\Http\\Controllers\\Api\\${model.name}Controller;`
 
           if (!content.includes(resourceLine)) {
-            // Inject before the stack-init marker if present, otherwise append
             const marker = '// @stack-init-routes-end'
             if (content.includes(marker)) {
               content = content.replace(marker, `${resourceLine}\n${marker}`)
@@ -58,7 +72,6 @@ export class LaravelGenerator {
           }
 
           if (!content.includes(useLine)) {
-            // Insert after the last 'use' statement to keep imports grouped
             const lines = content.split('\n')
             const lastUseIdx = lines.reduce((last, line, i) =>
               line.trimStart().startsWith('use ') ? i : last, -1)
@@ -70,12 +83,38 @@ export class LaravelGenerator {
             }
           }
         }
+
+        if (laravelAuth !== 'none') {
+          const authUse    = `use App\\Http\\Controllers\\Auth\\AuthController;`
+          const authRoutes = `Route::prefix('auth')->group(function () {\n    Route::post('register', [AuthController::class, 'register']);\n    Route::post('login',    [AuthController::class, 'login']);\n    Route::middleware('auth:sanctum')->group(function () {\n        Route::post('logout', [AuthController::class, 'logout']);\n        Route::get('me',      [AuthController::class, 'me']);\n    });\n});`
+          if (!content.includes(authUse)) {
+            const lines = content.split('\n')
+            const lastUseIdx = lines.reduce((last, line, i) =>
+              line.trimStart().startsWith('use ') ? i : last, -1)
+            if (lastUseIdx >= 0) {
+              lines.splice(lastUseIdx + 1, 0, authUse)
+              content = lines.join('\n')
+            } else {
+              content = content.replace('<?php', `<?php\n\n${authUse}`)
+            }
+          }
+          if (!content.includes('AuthController::class')) {
+            const marker = '// @stack-init-routes-end'
+            content = content.includes(marker)
+              ? content.replace(marker, `${authRoutes}\n${marker}`)
+              : content.trimEnd() + `\n\n${authRoutes}\n`
+          }
+        }
+
         result.files.push({ outputPath: 'routes/api.php', content })
       } else {
         result.files.push({
           outputPath: 'routes/api.php',
           content: this.render('overlays/routes/api.php.hbs', routeCtx),
         })
+        if (laravelAuth !== 'none') {
+          result.files.push(...this.generateAuthRoutesFile())
+        }
       }
     }
 
@@ -241,5 +280,181 @@ export class LaravelGenerator {
       this.cache.set(tpl, this.hbs.compile(src))
     }
     return this.cache.get(tpl)!(ctx)
+  }
+
+  // ── Auth generation ───────────────────────────────────────────────
+
+  private generateEnvExample(config: ProjectConfig): GeneratedFile {
+    const db    = config.laravel?.db_engine ?? 'mysql'
+    const auth  = config.laravel?.auth ?? 'none'
+    const name  = config.name
+
+    const dbHost = db === 'pgsql' ? 'DB_CONNECTION=pgsql\nDB_HOST=127.0.0.1\nDB_PORT=5432' : `DB_CONNECTION=${db}\nDB_HOST=127.0.0.1\nDB_PORT=${db === 'mysql' ? '3306' : '5432'}`
+
+    const lines = [
+      `APP_NAME="${name}"`,
+      `APP_ENV=local`,
+      `APP_KEY=`,
+      `APP_DEBUG=true`,
+      `APP_URL=http://localhost:8000`,
+      ``,
+      dbHost,
+      `DB_DATABASE=${name}`,
+      `DB_USERNAME=root`,
+      `DB_PASSWORD=`,
+      ...(auth !== 'none' && auth !== 'breeze' && auth !== 'jetstream' ? [] : []),
+    ]
+
+    return { outputPath: '.env.example', content: lines.join('\n') + '\n' }
+  }
+
+  private generateAuthFiles(config: ProjectConfig): GeneratedFile[] {
+    const auth = config.laravel?.auth ?? 'sanctum'
+    return [
+      { outputPath: 'app/Http/Controllers/Auth/AuthController.php', content: this.laravelAuthController(auth) },
+      { outputPath: 'app/Http/Requests/Auth/LoginRequest.php',      content: this.laravelLoginRequest() },
+      { outputPath: 'app/Http/Requests/Auth/RegisterRequest.php',   content: this.laravelRegisterRequest() },
+    ]
+  }
+
+  private generateAuthRoutesFile(): GeneratedFile[] {
+    return [{
+      outputPath: 'routes/auth.php',
+      content: `<?php
+
+use App\\Http\\Controllers\\Auth\\AuthController;
+use Illuminate\\Support\\Facades\\Route;
+
+Route::prefix('auth')->group(function () {
+    Route::post('register', [AuthController::class, 'register']);
+    Route::post('login',    [AuthController::class, 'login']);
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('logout', [AuthController::class, 'logout']);
+        Route::get('me',      [AuthController::class, 'me']);
+    });
+});
+`,
+    }]
+  }
+
+  private laravelAuthController(auth: string): string {
+    const guardName = auth === 'passport' ? 'api' : 'sanctum'
+    return `<?php
+
+declare(strict_types=1);
+
+namespace App\\Http\\Controllers\\Auth;
+
+use App\\Http\\Controllers\\Controller;
+use App\\Http\\Requests\\Auth\\LoginRequest;
+use App\\Http\\Requests\\Auth\\RegisterRequest;
+use App\\Models\\User;
+use Illuminate\\Http\\JsonResponse;
+use Illuminate\\Support\\Facades\\Auth;
+use Illuminate\\Support\\Facades\\Hash;
+
+class AuthController extends Controller
+{
+    public function register(RegisterRequest $request): JsonResponse
+    {
+        $user = User::create([
+            'name'     => $request->name,
+            'email'    => $request->email,
+            'password' => Hash::make($request->password),
+        ]);
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Account created successfully',
+            'token'   => $token,
+            'user'    => $user->only('id', 'name', 'email'),
+        ], 201);
+    }
+
+    public function login(LoginRequest $request): JsonResponse
+    {
+        if (!Auth::attempt($request->only('email', 'password'))) {
+            return response()->json(['message' => 'Invalid credentials'], 401);
+        }
+
+        $user  = Auth::user();
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'user'  => $user->only('id', 'name', 'email'),
+        ]);
+    }
+
+    public function logout(): JsonResponse
+    {
+        Auth::user()->currentAccessToken()->delete();
+
+        return response()->json(['message' => 'Logged out successfully']);
+    }
+
+    public function me(): JsonResponse
+    {
+        return response()->json(Auth::user());
+    }
+}
+`
+  }
+
+  private laravelLoginRequest(): string {
+    return `<?php
+
+declare(strict_types=1);
+
+namespace App\\Http\\Requests\\Auth;
+
+use Illuminate\\Foundation\\Http\\FormRequest;
+
+class LoginRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'email'    => ['required', 'email'],
+            'password' => ['required', 'string'],
+        ];
+    }
+}
+`
+  }
+
+  private laravelRegisterRequest(): string {
+    return `<?php
+
+declare(strict_types=1);
+
+namespace App\\Http\\Requests\\Auth;
+
+use Illuminate\\Foundation\\Http\\FormRequest;
+use Illuminate\\Validation\\Rules\\Password;
+
+class RegisterRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return [
+            'name'     => ['required', 'string', 'max:255'],
+            'email'    => ['required', 'email', 'unique:users,email'],
+            'password' => ['required', 'confirmed', Password::defaults()],
+        ];
+    }
+}
+`
   }
 }
