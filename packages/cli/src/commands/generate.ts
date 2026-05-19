@@ -75,7 +75,9 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     console.log(pc.bold('  Laravel'))
     const generator = new LaravelGenerator()
     const result    = await generator.generate(config, projectRoot)
-    const subfolder = isMixed ? 'backend' : '.'
+    // Laravel is always at root — even in mixed stacks it's the primary framework.
+    // The frontend stack gets its own 'frontend/' subfolder.
+    const subfolder = '.'
     
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     const files = result.files.map(f => ({ ...f, outputPath: path.join(subfolder, f.outputPath) }))
@@ -170,18 +172,20 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     makefileContent += `\t@echo "🚀 Initialisation du projet multi-stack..."\n`
     
     if (config.stack.includes('laravel')) {
-      makefileContent += `\tcd backend && composer install && cp .env.example .env && php artisan key:generate\n`
-    } else if (config.stack.includes('express')) {
+      // Laravel files are at root; only the frontend lives in frontend/
+      makefileContent += `\tcomposer install --no-interaction && cp .env.example .env && php artisan key:generate\n`
+      makefileContent += `\tcd frontend && npm install\n`
+      makefileContent += `\t@echo "✅ Setup terminé. N'oublie pas de configurer ton .env"\n\n`
+    } else {
       makefileContent += `\tcd backend && npm install\n`
+      makefileContent += `\tcd frontend && npm install\n`
+      makefileContent += `\t@echo "✅ Setup terminé."\n\n`
     }
 
-    makefileContent += `\tcd frontend && npm install\n`
-    makefileContent += `\t@echo "✅ Setup terminé. N'oublie pas de configurer ton .env dans backend/"\n\n`
-    
     makefileContent += `dev:\n`
     makefileContent += `\t@echo "🏁 Démarrage des services..."\n`
     if (config.stack.includes('laravel')) {
-      makefileContent += `\t(cd backend && php artisan serve) & (cd frontend && npm run dev)\n`
+      makefileContent += `\t(php artisan serve) & (cd frontend && npm run dev)\n`
     } else {
       makefileContent += `\t(cd backend && npm run dev) & (cd frontend && npm run dev)\n`
     }
@@ -198,7 +202,8 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     let dockerCompose = `version: '3.8'\n\nservices:\n`
     
     if (config.stack.includes('laravel')) {
-      dockerCompose += `  backend:\n    build:\n      context: ./backend\n      dockerfile: Dockerfile\n    volumes:\n      - ./backend:/var/www/html\n    ports:\n      - "8000:8000"\n\n`
+      // Laravel is at root, not in a backend/ subfolder
+      dockerCompose += `  backend:\n    build:\n      context: .\n      dockerfile: Dockerfile\n    volumes:\n      - .:/var/www/html\n    ports:\n      - "8000:8000"\n\n`
     } else {
       dockerCompose += `  backend:\n    build: ./backend\n    ports:\n      - "3000:3000"\n    volumes:\n      - ./backend:/app\n\n`
     }
@@ -211,8 +216,19 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
 
 
   // 5. Écriture des fichiers
+  // Identify files that don't exist yet — only those will be tracked for rollback.
+  // Pre-existing files that were overwritten are NOT deleted on rollback to avoid data loss.
+  const preExistingPaths = new Set(
+    allGeneratedFiles
+      .filter(f => fs.existsSync(path.join(projectRoot, f.outputPath)))
+      .map(f => f.outputPath)
+  )
+
   await writeFiles(allGeneratedFiles, projectRoot, opts.dryRun)
-  manifestFiles.push(...allGeneratedFiles.map(f => f.outputPath))
+  manifestFiles.push(...allGeneratedFiles
+    .filter(f => !preExistingPaths.has(f.outputPath))
+    .map(f => f.outputPath)
+  )
 
   // 6. Manifeste
   if (!opts.dryRun) {
