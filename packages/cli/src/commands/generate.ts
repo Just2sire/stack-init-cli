@@ -4,6 +4,7 @@ import yaml from 'js-yaml'
 import pc from 'picocolors'
 import { parseProjectConfig, isMixedStack } from '@stack-init/schema'
 import type { ProjectConfig } from '@stack-init/schema'
+import { resolveConfigPath } from '../utils/config'
 import { LaravelGenerator } from '../generators/laravel/index'
 import { ExpressGenerator } from '../generators/express/index'
 import { NestGenerator } from '../generators/nest/index'
@@ -21,12 +22,7 @@ export interface GenerateOptions {
 
 export async function runGenerate(opts: GenerateOptions): Promise<void> {
   // 1. Lecture YAML
-  const configPath = path.resolve(opts.config)
-  if (!fs.existsSync(configPath)) {
-    console.error(pc.red(`\n  ✗ Fichier introuvable : ${configPath}\n`))
-    process.exit(1)
-  }
-
+  const configPath = resolveConfigPath(opts.config)
   const raw = yaml.load(fs.readFileSync(configPath, 'utf-8'))
 
   // 2. Validation Zod

@@ -48,10 +48,26 @@ export class LaravelGenerator {
           const useLine = `use App\\Http\\Controllers\\Api\\${model.name}Controller;`
 
           if (!content.includes(resourceLine)) {
-            content += `\n${resourceLine}`
+            // Inject before the stack-init marker if present, otherwise append
+            const marker = '// @stack-init-routes-end'
+            if (content.includes(marker)) {
+              content = content.replace(marker, `${resourceLine}\n${marker}`)
+            } else {
+              content = content.trimEnd() + `\n${resourceLine}\n`
+            }
           }
+
           if (!content.includes(useLine)) {
-            content = content.replace('<?php', `<?php\n\n${useLine}`)
+            // Insert after the last 'use' statement to keep imports grouped
+            const lines = content.split('\n')
+            const lastUseIdx = lines.reduce((last, line, i) =>
+              line.trimStart().startsWith('use ') ? i : last, -1)
+            if (lastUseIdx >= 0) {
+              lines.splice(lastUseIdx + 1, 0, useLine)
+              content = lines.join('\n')
+            } else {
+              content = content.replace('<?php', `<?php\n\n${useLine}`)
+            }
           }
         }
         result.files.push({ outputPath: 'routes/api.php', content })

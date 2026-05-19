@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import yaml from 'js-yaml'
 import pc from 'picocolors'
+import { resolveConfigPath } from '../utils/config'
 import { parseProjectConfig, ModelSchema } from '@stack-init/schema'
 import type { ProjectConfig, Model } from '@stack-init/schema'
 import { LaravelGenerator } from '../generators/laravel/index'
@@ -18,12 +19,7 @@ export interface AddOptions {
 }
 
 export async function runAdd(opts: AddOptions): Promise<void> {
-  const configPath = path.resolve(opts.config)
-  if (!fs.existsSync(configPath)) {
-    console.error(pc.red(`\n  ✗ Fichier introuvable : ${configPath}\n`))
-    process.exit(1)
-  }
-
+  const configPath = resolveConfigPath(opts.config)
   const raw = yaml.load(fs.readFileSync(configPath, 'utf-8')) as any
   const parsed = parseProjectConfig(raw)
   if (!parsed.success) {
