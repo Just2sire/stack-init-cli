@@ -1,8 +1,11 @@
 {
   "name": "stack-init-cli",
-  "version": "0.1.6",
+  "version": "0.1.7",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
-    "stack-init-cli": "./dist/index.js"
+    "stack-init-cli": "dist/index.js"
   },
   "description": "Scaffold models, migrations, controllers and more for Laravel, Express, NestJS, FastAPI and Next.js from a single YAML file",
   "keywords": [
