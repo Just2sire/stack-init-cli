@@ -4,6 +4,7 @@ import { runAdd } from './commands/add'
 import { runRollback } from './commands/rollback'
 import { runValidate } from './commands/validate'
 import { runDiff } from './commands/diff'
+import { runUpdateVersions } from './commands/update-versions'
 
 const program = new Command()
 
@@ -62,6 +63,13 @@ program
   .option('-o, --output <path>', 'Racine du projet cible', '.')
   .action(async (opts) => {
     await runDiff({ config: opts.config, output: opts.output })
+  })
+
+program
+  .command('update-versions')
+  .description('Récupère les dernières versions depuis npm, packagist et PyPI')
+  .action(async () => {
+    await runUpdateVersions()
   })
 
 program.parse()

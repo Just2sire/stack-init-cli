@@ -1,5 +1,5 @@
 import { build } from 'esbuild'
-import { chmodSync } from 'fs'
+import { chmodSync, mkdirSync, copyFileSync } from 'fs'
 
 await build({
   entryPoints: ['src/index.ts'],
@@ -14,3 +14,7 @@ await build({
 })
 
 chmodSync('dist/index.js', 0o755)
+
+// Copy versions.json alongside the binary so `update-versions` can write to it
+mkdirSync('dist/config', { recursive: true })
+copyFileSync('src/config/versions.json', 'dist/config/versions.json')

@@ -1,6 +1,7 @@
 import type { Model, ProjectConfig, NamedField, ReactOptions } from '@stack-init/schema'
 import { type GeneratedFile } from '../../utils/fs'
 import { kebabCase, pascalCase } from '../../utils/naming'
+import { npmVersion } from '../../config/versions'
 
 export interface GeneratorResult {
   files: GeneratedFile[]
@@ -156,16 +157,16 @@ export class NextJSGenerator {
   private buildPackageJson(projectName: string, opts?: ReactOptions | null): Record<string, unknown> {
     const uiLib = opts?.ui_lib ?? 'none'
     const deps: Record<string, string> = {
-      next: '^15.0.0',
-      react: '^19.0.0',
-      'react-dom': '^19.0.0',
-      '@prisma/client': 'latest',
+      next: npmVersion('next'),
+      react: npmVersion('react'),
+      'react-dom': npmVersion('react-dom'),
+      '@prisma/client': npmVersion('@prisma/client'),
     }
 
-    if (uiLib === 'shadcn')      { deps['tailwindcss'] = '^4.0.0'; deps['@tailwindcss/postcss'] = '^4.0.0'; }
-    if (uiLib === 'mui')         { deps['@mui/material'] = '^6.0.0'; deps['@emotion/react'] = '^11.0.0'; deps['@emotion/styled'] = '^11.0.0'; }
-    if (uiLib === 'antd')        { deps['antd'] = '^5.0.0'; }
-    if (opts?.css === 'tailwind' && uiLib !== 'shadcn') { deps['tailwindcss'] = '^4.0.0'; deps['@tailwindcss/postcss'] = '^4.0.0'; }
+    if (uiLib === 'shadcn')      { deps['tailwindcss'] = npmVersion('tailwindcss'); deps['@tailwindcss/postcss'] = npmVersion('@tailwindcss/postcss'); }
+    if (uiLib === 'mui')         { deps['@mui/material'] = npmVersion('@mui/material'); deps['@emotion/react'] = npmVersion('@emotion/react'); deps['@emotion/styled'] = npmVersion('@emotion/styled'); }
+    if (uiLib === 'antd')        { deps['antd'] = npmVersion('antd'); }
+    if (opts?.css === 'tailwind' && uiLib !== 'shadcn') { deps['tailwindcss'] = npmVersion('tailwindcss'); deps['@tailwindcss/postcss'] = npmVersion('@tailwindcss/postcss'); }
 
     return {
       name: projectName.toLowerCase().replace(/\s+/g, '-'),
@@ -181,12 +182,12 @@ export class NextJSGenerator {
       },
       dependencies: deps,
       devDependencies: {
-        typescript: '^5.0.0',
-        '@types/node': '^20.0.0',
-        '@types/react': '^19.0.0',
-        '@types/react-dom': '^19.0.0',
-        prisma: 'latest',
-        tsx: '^4.0.0',
+        typescript: npmVersion('typescript'),
+        '@types/node': npmVersion('@types/node'),
+        '@types/react': npmVersion('@types/react'),
+        '@types/react-dom': npmVersion('@types/react-dom'),
+        prisma: npmVersion('prisma'),
+        tsx: npmVersion('tsx'),
       }
     }
   }

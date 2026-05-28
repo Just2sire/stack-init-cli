@@ -1,0 +1,30 @@
+{
+  "updatedAt": "2026-05-25",
+  "runtimes": {
+    "node": "22",
+    "php": "8.4",
+    "python": "3.12"
+  },
+  "frameworks": {
+    "laravel": "12",
+    "fastapi": "0.115.0"
+  },
+  "npm": {
+    "next": "^15.3.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@prisma/client": "^6.8.2",
+    "prisma": "^6.8.2",
+    "tailwindcss": "^4.1.7",
+    "@tailwindcss/postcss": "^4.1.7",
+    "@mui/material": "^7.1.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "antd": "^5.24.6",
+    "typescript": "^5.8.3",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.4",
+    "@types/react-dom": "^19.1.2",
+    "tsx": "^4.19.4"
+  }
+}

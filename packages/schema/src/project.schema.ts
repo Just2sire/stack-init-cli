@@ -27,12 +27,16 @@ const REQUIRES_FASTAPI = ['fastapi', 'fastapi+react', 'fastapi+nextjs']
 const REQUIRES_NESTJS  = ['nestjs', 'nestjs+react']
 const REQUIRES_REACT   = ['react', 'express+react', 'nestjs+react', 'fastapi+react', 'mern', 'pern', 'mevn', 'mean']
 
+export const ServiceIdSchema = z.enum(['auth', 'email', 'cache', 'websockets', 'queue', 'file-upload'])
+export type ServiceId = z.infer<typeof ServiceIdSchema>
+
 export const ProjectConfigSchema = z.object({
   name:         z.string().min(1).regex(/^[a-z][a-z0-9_-]*$/, 'Nom en kebab-case ou snake_case (lettres minuscules, chiffres, tirets et underscores autorisés)'),
   description:  z.string().optional(),
   version:      z.string().default('0.1.0'),
   stack:        StackSchema,
   models:       z.array(ModelSchema).min(1, 'Définit au moins un modèle'),
+  services:     z.array(ServiceIdSchema).optional(),
   laravel:      LaravelOptionsSchema.optional(),
   react:        ReactOptionsSchema.optional(),
   express:      ExpressConfigSchema.optional(),

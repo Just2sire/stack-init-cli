@@ -1,0 +1,46 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement to the CLI!
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      placeholder: "When I run the CLI on a YAML with an invalid field type, I get a cryptic error..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this affect?
+      options:
+        - CLI flags / commands
+        - Generator (Express)
+        - Generator (NestJS)
+        - Generator (FastAPI)
+        - Generator (Laravel)
+        - Generator (Next.js)
+        - Schema validation
+        - New framework support
+        - Documentation
+        - Other
+    validations:
+      required: true

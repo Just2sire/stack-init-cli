@@ -3,7 +3,7 @@ import path from 'node:path'
 import yaml from 'js-yaml'
 import pc from 'picocolors'
 import { parseProjectConfig, isMixedStack } from '@stack-init/schema'
-import type { ProjectConfig } from '@stack-init/schema'
+import type { ProjectConfig, ServiceId } from '@stack-init/schema'
 import { resolveConfigPath } from '../utils/config'
 import { LaravelGenerator } from '../generators/laravel/index'
 import { ExpressGenerator } from '../generators/express/index'
@@ -13,6 +13,13 @@ import { ZipGenerator } from '../generators/zip/index'
 import { NextJSGenerator } from '../generators/nextjs/index'
 import { writeFiles, type GeneratedFile } from '../utils/fs'
 import { generateMakefile, generateBashRunner } from '../generators/runner/makefile'
+import {
+  generateSetupSh, generateSetupPs1, generateSetupBat,
+  generateDevSh, generateDevPs1, generateDevBat,
+} from '../generators/runner/scripts'
+import { buildTerminalSummary, buildGettingStartedMd } from '../utils/setup-instructions'
+import { generateServices } from '../generators/services/index'
+import { generateFrontendApi } from '../generators/frontend-api/index'
 
 export interface GenerateOptions {
   config: string
@@ -90,9 +97,11 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
       if (runner !== 'none') {
         if (['makefile', 'both'].includes(runner)) {
           allGeneratedFiles.push({ outputPath: 'Makefile', content: generateMakefile(config) })
+          console.log(`  ${pc.green('✓')} Makefile`)
         }
         if (['bash', 'both'].includes(runner)) {
           allGeneratedFiles.push({ outputPath: 'run.sh', content: generateBashRunner(config) })
+          console.log(`  ${pc.green('✓')} run.sh`)
         }
       }
     }
@@ -184,16 +193,16 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
 
     makefileContent += `dev:\n`
     makefileContent += `\t@echo "🏁 Démarrage des services..."\n`
-    if (config.stack.includes('laravel')) {
-      makefileContent += `\t(php artisan serve) & (cd frontend && npm run dev)\n`
-    } else {
-      makefileContent += `\t(cd backend && npm run dev) & (cd frontend && npm run dev)\n`
-    }
+    makefileContent += `\t@bash dev.sh\n`
 
     makefileContent += `\nstop:\n`
     makefileContent += `\t@echo "🛑 Arrêt des services..."\n`
-    makefileContent += `\tpkill -f "php artisan serve" || true\n`
-    makefileContent += `\tpkill -f "npm run dev" || true\n`
+    if (config.stack.includes('laravel')) {
+      makefileContent += `\t-pkill -f "php artisan serve" 2>/dev/null || true\n`
+    } else {
+      makefileContent += `\t-pkill -f "npm run dev" 2>/dev/null || true\n`
+    }
+    makefileContent += `\t-pkill -f "npm run dev" 2>/dev/null || true\n`
 
     allGeneratedFiles.push({ outputPath: 'Makefile', content: makefileContent })
     console.log(`  ${pc.green('✓')} Makefile (global)`)
@@ -215,7 +224,40 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
   }
 
 
-  // 5. Écriture des fichiers
+  // 5. Scripts cross-platform (setup + dev) + GETTING_STARTED.md
+  allGeneratedFiles.push({ outputPath: 'setup.sh',  content: generateSetupSh(config) })
+  allGeneratedFiles.push({ outputPath: 'setup.ps1', content: generateSetupPs1(config) })
+  allGeneratedFiles.push({ outputPath: 'setup.bat', content: generateSetupBat(config) })
+  allGeneratedFiles.push({ outputPath: 'GETTING_STARTED.md', content: buildGettingStartedMd(config) })
+  console.log(`  ${pc.green('✓')} setup.sh / setup.ps1 / setup.bat`)
+  console.log(`  ${pc.green('✓')} GETTING_STARTED.md`)
+  if (isMixed) {
+    allGeneratedFiles.push({ outputPath: 'dev.sh',  content: generateDevSh(config) })
+    allGeneratedFiles.push({ outputPath: 'dev.ps1', content: generateDevPs1(config) })
+    allGeneratedFiles.push({ outputPath: 'dev.bat', content: generateDevBat(config) })
+    console.log(`  ${pc.green('✓')} dev.sh / dev.ps1 / dev.bat`)
+  }
+
+  // 6. Services additionnels (email, cache, queue, file-upload, websockets)
+  const services = (config.services ?? []) as ServiceId[]
+  if (services.length > 0) {
+    console.log(pc.bold('  Services'))
+    const before = allGeneratedFiles.length
+    generateServices(config, services, allGeneratedFiles)
+    const added = allGeneratedFiles.slice(before)
+    added.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
+  }
+
+  // Frontend API client for mixed stacks
+  if (isMixed && (config.stack.includes('react') || config.stack.includes('nextjs'))) {
+    console.log(pc.bold('  Frontend API client'))
+    const before = allGeneratedFiles.length
+    generateFrontendApi(config, allGeneratedFiles)
+    const added = allGeneratedFiles.slice(before)
+    added.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
+  }
+
+  // 7. Écriture des fichiers
   // Identify files that don't exist yet — only those will be tracked for rollback.
   // Pre-existing files that were overwritten are NOT deleted on rollback to avoid data loss.
   const preExistingPaths = new Set(
@@ -230,7 +272,7 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     .map(f => f.outputPath)
   )
 
-  // 6. Manifeste
+  // 8. Manifeste
   if (!opts.dryRun) {
     const manifest = {
       lastGeneration: new Date().toISOString(),
@@ -239,10 +281,10 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     fs.writeFileSync(path.join(projectRoot, '.stack-init-manifest.json'), JSON.stringify(manifest, null, 2))
   }
 
-  console.log(pc.bold(pc.green('\n  ✓ Génération terminée\n')))
   if (!opts.dryRun) {
-    console.log(`  Projet généré dans : ${pc.cyan(opts.output)}`)
-    console.log(`  Lance ${pc.cyan('make setup')} pour commencer\n`)
+    buildTerminalSummary(config, opts.output)
+  } else {
+    console.log(pc.bold(pc.green('\n  ✓ Dry-run terminé — aucun fichier écrit\n')))
   }
 }
 
