@@ -28,7 +28,7 @@ export function generateSetupSh(config: ProjectConfig): string {
 
   if (isLaravelStack(stack)) {
     lines.push('# Backend — Laravel')
-    lines.push('composer install --no-interaction')
+    lines.push('composer update --no-interaction')
     lines.push('cp .env.example .env')
     lines.push('php artisan key:generate')
     lines.push('php artisan migrate --force')
@@ -75,7 +75,7 @@ export function generateSetupPs1(config: ProjectConfig): string {
 
   if (isLaravelStack(stack)) {
     lines.push('# Backend — Laravel')
-    lines.push('composer install --no-interaction')
+    lines.push('composer update --no-interaction')
     lines.push('Copy-Item .env.example .env')
     lines.push('php artisan key:generate')
     lines.push('php artisan migrate --force')
@@ -121,7 +121,7 @@ export function generateSetupBat(config: ProjectConfig): string {
 
   if (isLaravelStack(stack)) {
     lines.push('REM Backend — Laravel')
-    lines.push('composer install --no-interaction')
+    lines.push('composer update --no-interaction')
     lines.push('copy .env.example .env')
     lines.push('php artisan key:generate')
     lines.push('php artisan migrate --force')
