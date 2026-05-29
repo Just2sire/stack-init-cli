@@ -1,0 +1,27 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`T3Generator > generates the expected file paths 1`] = `
+[
+  ".env",
+  ".gitignore",
+  "next.config.ts",
+  "package.json",
+  "postcss.config.mjs",
+  "prisma/schema.prisma",
+  "src/app/api/trpc/[trpc]/route.ts",
+  "src/app/globals.css",
+  "src/app/layout.tsx",
+  "src/app/page.tsx",
+  "src/app/post/new/page.tsx",
+  "src/app/post/page.tsx",
+  "src/server/api/root.ts",
+  "src/server/api/routers/post.ts",
+  "src/server/api/trpc.ts",
+  "src/server/db.ts",
+  "src/trpc/query-client.ts",
+  "src/trpc/react.tsx",
+  "src/trpc/server.ts",
+  "tailwind.config.ts",
+  "tsconfig.json",
+]
+`;

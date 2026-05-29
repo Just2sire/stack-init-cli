@@ -1,0 +1,42 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`FastAPIGenerator — beanie/mongodb > generates the expected file paths 1`] = `
+[
+  ".env",
+  ".env.example",
+  ".python-version",
+  "app/__init__.py",
+  "app/database.py",
+  "app/main.py",
+  "app/models/__init__.py",
+  "app/models/post.py",
+  "app/routers/__init__.py",
+  "app/routers/post.py",
+  "app/services/__init__.py",
+  "app/services/post.py",
+  "pyproject.toml",
+  "requirements.txt",
+]
+`;
+
+exports[`FastAPIGenerator — sqlalchemy/postgresql > generates the expected file paths 1`] = `
+[
+  ".env",
+  ".env.example",
+  ".python-version",
+  "alembic.ini",
+  "alembic/env.py",
+  "alembic/versions/.gitkeep",
+  "app/__init__.py",
+  "app/database.py",
+  "app/main.py",
+  "app/models/__init__.py",
+  "app/models/post.py",
+  "app/routers/__init__.py",
+  "app/routers/post.py",
+  "app/services/__init__.py",
+  "app/services/post.py",
+  "pyproject.toml",
+  "requirements.txt",
+]
+`;

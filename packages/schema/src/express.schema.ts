@@ -6,6 +6,7 @@ export const ExpressOrmSchema = z.enum([
   'sequelize',
   'typeorm',
   'mongoose',
+  'drizzle',
   'knex',
   'none',
 ]);

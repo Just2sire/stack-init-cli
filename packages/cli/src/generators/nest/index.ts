@@ -110,9 +110,12 @@ export class NestGenerator {
     })
 
     if (gen.controller) {
+      const isCqrs = config.nestjs?.architecture === 'cqrs'
       files.push({
         outputPath: `${entityDir}/${kn}.controller.ts`,
-        content: this.render('overlays/controller/controller.ts.hbs', ctx),
+        content: isCqrs
+          ? this.generateCqrsController(ctx, config)
+          : this.render('overlays/controller/controller.ts.hbs', ctx),
       })
     }
 
@@ -135,11 +138,28 @@ export class NestGenerator {
       })
     }
 
-    // CQRS stubs
+    // CQRS commands + queries
     if (config.nestjs?.architecture === 'cqrs') {
-      files.push({ outputPath: `${entityDir}/commands/.gitkeep`, content: '' })
-      files.push({ outputPath: `${entityDir}/queries/.gitkeep`, content: '' })
-      warnings.push(`${model.name}: CQRS architecture selected — commands/ and queries/ are stubbed. Move business logic from the service into dedicated command/query handlers.`)
+      const name = ctx.pascalName as string
+      const slug = kn
+
+      // Commands
+      files.push({ outputPath: `${entityDir}/commands/create-${slug}.command.ts`,  content: this.cqrsCreateCommand(name, slug) })
+      files.push({ outputPath: `${entityDir}/commands/update-${slug}.command.ts`,  content: this.cqrsUpdateCommand(name, slug) })
+      files.push({ outputPath: `${entityDir}/commands/delete-${slug}.command.ts`,  content: this.cqrsDeleteCommand(name) })
+      // Command handlers
+      files.push({ outputPath: `${entityDir}/commands/handlers/create-${slug}.handler.ts`, content: this.cqrsCreateHandler(name, slug) })
+      files.push({ outputPath: `${entityDir}/commands/handlers/update-${slug}.handler.ts`, content: this.cqrsUpdateHandler(name, slug) })
+      files.push({ outputPath: `${entityDir}/commands/handlers/delete-${slug}.handler.ts`, content: this.cqrsDeleteHandler(name, slug) })
+      // Queries
+      files.push({ outputPath: `${entityDir}/queries/get-all-${slug}.query.ts`,    content: this.cqrsGetAllQuery(name) })
+      files.push({ outputPath: `${entityDir}/queries/get-one-${slug}.query.ts`,    content: this.cqrsGetOneQuery(name) })
+      // Query handlers
+      files.push({ outputPath: `${entityDir}/queries/handlers/get-all-${slug}.handler.ts`, content: this.cqrsGetAllHandler(name, slug) })
+      files.push({ outputPath: `${entityDir}/queries/handlers/get-one-${slug}.handler.ts`, content: this.cqrsGetOneHandler(name, slug) })
+      // Override module to register all handlers
+      const moduleFile = files.find(f => f.outputPath === `${entityDir}/${kn}.module.ts`)
+      if (moduleFile) moduleFile.content = this.generateCqrsModule(ctx, config)
     }
 
     // Tests
@@ -151,6 +171,140 @@ export class NestGenerator {
     }
 
     return { files, warnings }
+  }
+
+  // ── CQRS file generators ─────────────────────────────────────────────────────
+
+  private cqrsCreateCommand(name: string, slug: string): string {
+    return `import { ICommand } from '@nestjs/cqrs';\nimport { Create${name}Dto } from '../dto/create-${slug}.dto';\nexport class Create${name}Command implements ICommand {\n  constructor(public readonly dto: Create${name}Dto) {}\n}\n`
+  }
+  private cqrsUpdateCommand(name: string, slug: string): string {
+    return `import { ICommand } from '@nestjs/cqrs';\nimport { Update${name}Dto } from '../dto/update-${slug}.dto';\nexport class Update${name}Command implements ICommand {\n  constructor(public readonly id: number, public readonly dto: Update${name}Dto) {}\n}\n`
+  }
+  private cqrsDeleteCommand(name: string): string {
+    return `import { ICommand } from '@nestjs/cqrs';\nexport class Delete${name}Command implements ICommand {\n  constructor(public readonly id: number) {}\n}\n`
+  }
+  private cqrsCreateHandler(name: string, slug: string): string {
+    return `import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';\nimport { Create${name}Command } from '../create-${slug}.command';\nimport { ${name}Service } from '../../${slug}.service';\n\n@CommandHandler(Create${name}Command)\nexport class Create${name}Handler implements ICommandHandler<Create${name}Command> {\n  constructor(private readonly service: ${name}Service) {}\n  async execute(cmd: Create${name}Command) { return this.service.create(cmd.dto); }\n}\n`
+  }
+  private cqrsUpdateHandler(name: string, slug: string): string {
+    return `import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';\nimport { Update${name}Command } from '../update-${slug}.command';\nimport { ${name}Service } from '../../${slug}.service';\n\n@CommandHandler(Update${name}Command)\nexport class Update${name}Handler implements ICommandHandler<Update${name}Command> {\n  constructor(private readonly service: ${name}Service) {}\n  async execute(cmd: Update${name}Command) { return this.service.update(cmd.id, cmd.dto); }\n}\n`
+  }
+  private cqrsDeleteHandler(name: string, slug: string): string {
+    return `import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';\nimport { Delete${name}Command } from '../delete-${slug}.command';\nimport { ${name}Service } from '../../${slug}.service';\n\n@CommandHandler(Delete${name}Command)\nexport class Delete${name}Handler implements ICommandHandler<Delete${name}Command> {\n  constructor(private readonly service: ${name}Service) {}\n  async execute(cmd: Delete${name}Command) { return this.service.remove(cmd.id); }\n}\n`
+  }
+  private cqrsGetAllQuery(name: string): string {
+    return `import { IQuery } from '@nestjs/cqrs';\nexport class GetAll${name}Query implements IQuery {}\n`
+  }
+  private cqrsGetOneQuery(name: string): string {
+    return `import { IQuery } from '@nestjs/cqrs';\nexport class GetOne${name}Query implements IQuery {\n  constructor(public readonly id: number) {}\n}\n`
+  }
+  private cqrsGetAllHandler(name: string, slug: string): string {
+    return `import { QueryHandler, IQueryHandler } from '@nestjs/cqrs';\nimport { GetAll${name}Query } from '../get-all-${slug}.query';\nimport { ${name}Service } from '../../${slug}.service';\n\n@QueryHandler(GetAll${name}Query)\nexport class GetAll${name}Handler implements IQueryHandler<GetAll${name}Query> {\n  constructor(private readonly service: ${name}Service) {}\n  async execute() { return this.service.findAll(); }\n}\n`
+  }
+  private cqrsGetOneHandler(name: string, slug: string): string {
+    return `import { QueryHandler, IQueryHandler } from '@nestjs/cqrs';\nimport { GetOne${name}Query } from '../get-one-${slug}.query';\nimport { ${name}Service } from '../../${slug}.service';\n\n@QueryHandler(GetOne${name}Query)\nexport class GetOne${name}Handler implements IQueryHandler<GetOne${name}Query> {\n  constructor(private readonly service: ${name}Service) {}\n  async execute(q: GetOne${name}Query) { return this.service.findOne(q.id); }\n}\n`
+  }
+
+  private generateCqrsController(ctx: Record<string, unknown>, config: ProjectConfig): string {
+    const name    = ctx.pascalName as string
+    const mLow    = ctx.camelName  as string
+    const slug    = ctx.kebabName  as string
+    const swagger = config.nestjs?.swagger ?? false
+    const auth    = config.nestjs?.auth !== 'none' && config.nestjs?.auth
+
+    return `import { Controller, Get, Post, Body, Patch, Param, Delete${auth ? ', UseGuards' : ''} } from '@nestjs/common';
+import { CommandBus, QueryBus } from '@nestjs/cqrs';
+${swagger ? `import { ApiTags, ApiOperation${auth ? ', ApiBearerAuth' : ''} } from '@nestjs/swagger';` : ''}
+import { Create${name}Command } from './commands/create-${slug}.command';
+import { Update${name}Command } from './commands/update-${slug}.command';
+import { Delete${name}Command } from './commands/delete-${slug}.command';
+import { GetAll${name}Query } from './queries/get-all-${slug}.query';
+import { GetOne${name}Query } from './queries/get-one-${slug}.query';
+import { Create${name}Dto } from './dto/create-${slug}.dto';
+import { Update${name}Dto } from './dto/update-${slug}.dto';
+${auth ? `import { JwtAuthGuard } from '../auth/jwt-auth.guard';` : ''}
+
+${swagger ? `@ApiTags('${name}')` : ''}
+@Controller('${slug}')
+export class ${name}Controller {
+  constructor(
+    private readonly commandBus: CommandBus,
+    private readonly queryBus: QueryBus,
+  ) {}
+
+  @Post()${swagger ? `\n  @ApiOperation({ summary: 'Create ${mLow}' })` : ''}${auth ? `\n  @UseGuards(JwtAuthGuard)\n  @ApiBearerAuth()` : ''}
+  create(@Body() dto: Create${name}Dto) {
+    return this.commandBus.execute(new Create${name}Command(dto));
+  }
+
+  @Get()${swagger ? `\n  @ApiOperation({ summary: 'Get all ${mLow}s' })` : ''}
+  findAll() { return this.queryBus.execute(new GetAll${name}Query()); }
+
+  @Get(':id')${swagger ? `\n  @ApiOperation({ summary: 'Get one ${mLow}' })` : ''}
+  findOne(@Param('id') id: string) {
+    return this.queryBus.execute(new GetOne${name}Query(+id));
+  }
+
+  @Patch(':id')${swagger ? `\n  @ApiOperation({ summary: 'Update ${mLow}' })` : ''}${auth ? `\n  @UseGuards(JwtAuthGuard)\n  @ApiBearerAuth()` : ''}
+  update(@Param('id') id: string, @Body() dto: Update${name}Dto) {
+    return this.commandBus.execute(new Update${name}Command(+id, dto));
+  }
+
+  @Delete(':id')${swagger ? `\n  @ApiOperation({ summary: 'Delete ${mLow}' })` : ''}${auth ? `\n  @UseGuards(JwtAuthGuard)\n  @ApiBearerAuth()` : ''}
+  remove(@Param('id') id: string) {
+    return this.commandBus.execute(new Delete${name}Command(+id));
+  }
+}
+`
+  }
+
+  private generateCqrsModule(ctx: Record<string, unknown>, config: ProjectConfig): string {
+    const name  = ctx.pascalName as string
+    const slug  = ctx.kebabName  as string
+    const orm   = config.nestjs?.orm ?? 'typeorm'
+
+    const ormImport = orm === 'typeorm'
+      ? `import { TypeOrmModule } from '@nestjs/typeorm';\nimport { ${name} } from './entities/${slug}.entity';`
+      : orm === 'mongoose'
+      ? `import { MongooseModule } from '@nestjs/mongoose';\nimport { ${name}, ${name}Schema } from './${slug}.schema';`
+      : orm === 'prisma'
+      ? `import { PrismaService } from '../prisma.service';`
+      : ''
+
+    const ormImportsArr = orm === 'typeorm'
+      ? `TypeOrmModule.forFeature([${name}]), `
+      : orm === 'mongoose'
+      ? `MongooseModule.forFeature([{ name: ${name}.name, schema: ${name}Schema }]), `
+      : ''
+
+    const ormProviders = orm === 'prisma' ? ', PrismaService' : ''
+
+    return `import { Module } from '@nestjs/common';
+import { CqrsModule } from '@nestjs/cqrs';
+import { ${name}Controller } from './${slug}.controller';
+import { ${name}Service } from './${slug}.service';
+${ormImport}
+import { Create${name}Handler } from './commands/handlers/create-${slug}.handler';
+import { Update${name}Handler } from './commands/handlers/update-${slug}.handler';
+import { Delete${name}Handler } from './commands/handlers/delete-${slug}.handler';
+import { GetAll${name}Handler } from './queries/handlers/get-all-${slug}.handler';
+import { GetOne${name}Handler } from './queries/handlers/get-one-${slug}.handler';
+
+@Module({
+  imports: [CqrsModule, ${ormImportsArr}],
+  controllers: [${name}Controller],
+  providers: [
+    ${name}Service${ormProviders},
+    Create${name}Handler,
+    Update${name}Handler,
+    Delete${name}Handler,
+    GetAll${name}Handler,
+    GetOne${name}Handler,
+  ],
+})
+export class ${name}Module {}
+`
   }
 
   private generateInlineTest(ctx: Record<string, unknown>): string {

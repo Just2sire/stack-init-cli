@@ -1,0 +1,26 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`DjangoGenerator > generates the expected file paths 1`] = `
+[
+  ".env",
+  ".env.example",
+  ".gitignore",
+  ".python-version",
+  "Makefile",
+  "apps/__init__.py",
+  "apps/post/__init__.py",
+  "apps/post/apps.py",
+  "apps/post/models.py",
+  "apps/post/serializers.py",
+  "apps/post/urls.py",
+  "apps/post/views.py",
+  "manage.py",
+  "my_app/__init__.py",
+  "my_app/asgi.py",
+  "my_app/settings.py",
+  "my_app/urls.py",
+  "my_app/wsgi.py",
+  "pyproject.toml",
+  "requirements.txt",
+]
+`;

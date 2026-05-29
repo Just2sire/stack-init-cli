@@ -1,0 +1,44 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generateDockerFiles — django/postgresql > generates the expected file paths 1`] = `
+[
+  ".dockerignore",
+  "Dockerfile",
+  "docker-compose.yml",
+]
+`;
+
+exports[`generateDockerFiles — express+react (mixed) > generates the expected file paths 1`] = `
+[
+  "backend/.dockerignore",
+  "backend/Dockerfile",
+  "docker-compose.yml",
+  "frontend/.dockerignore",
+  "frontend/Dockerfile",
+  "frontend/nginx.conf",
+]
+`;
+
+exports[`generateDockerFiles — express/postgresql (solo) > generates the expected file paths 1`] = `
+[
+  ".dockerignore",
+  "Dockerfile",
+  "docker-compose.yml",
+]
+`;
+
+exports[`generateDockerFiles — fastapi/postgresql (solo) > generates the expected file paths 1`] = `
+[
+  ".dockerignore",
+  "Dockerfile",
+  "docker-compose.yml",
+]
+`;
+
+exports[`generateDockerFiles — t3/postgresql > generates the expected file paths 1`] = `
+[
+  ".dockerignore",
+  "Dockerfile",
+  "docker-compose.yml",
+]
+`;

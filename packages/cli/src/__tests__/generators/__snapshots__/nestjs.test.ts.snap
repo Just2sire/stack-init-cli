@@ -1,0 +1,35 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`NestGenerator — CQRS architecture > CQRS file paths snapshot 1`] = `
+[
+  ".env.example",
+  "src/app.module.ts",
+  "src/modules/post/commands/create-post.command.ts",
+  "src/modules/post/commands/delete-post.command.ts",
+  "src/modules/post/commands/handlers/create-post.handler.ts",
+  "src/modules/post/commands/handlers/delete-post.handler.ts",
+  "src/modules/post/commands/handlers/update-post.handler.ts",
+  "src/modules/post/commands/update-post.command.ts",
+  "src/modules/post/dto/create-post.dto.ts",
+  "src/modules/post/dto/update-post.dto.ts",
+  "src/modules/post/entities/post.entity.ts",
+  "src/modules/post/post.controller.ts",
+  "src/modules/post/post.module.ts",
+  "src/modules/post/queries/get-all-post.query.ts",
+  "src/modules/post/queries/get-one-post.query.ts",
+  "src/modules/post/queries/handlers/get-all-post.handler.ts",
+  "src/modules/post/queries/handlers/get-one-post.handler.ts",
+]
+`;
+
+exports[`NestGenerator — modular/typeorm > generates the expected file paths 1`] = `
+[
+  ".env.example",
+  "src/app.module.ts",
+  "src/modules/post/dto/create-post.dto.ts",
+  "src/modules/post/dto/update-post.dto.ts",
+  "src/modules/post/entities/post.entity.ts",
+  "src/modules/post/post.controller.ts",
+  "src/modules/post/post.module.ts",
+]
+`;

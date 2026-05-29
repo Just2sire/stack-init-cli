@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { ModelSchema, validateForeignKeys } from './models.schema'
 import { LaravelOptionsSchema } from './laravel.schema'
 import { ReactOptionsSchema } from './react.schema'
+import { VueOptionsSchema } from './vue.schema'
 import { ExpressConfigSchema } from './express.schema'
 import { NestConfigSchema } from './nest.schema'
 import { FastAPIConfigSchema } from './fastapi.schema'
@@ -14,9 +15,9 @@ export const StackSchema = z.enum([
 ])
 export type Stack = z.infer<typeof StackSchema>
 
-export const ZIP_STACKS:   Stack[] = ['react', 'nextjs', 'express', 'nestjs', 'fastapi', 'mern', 'pern', 't3', 'mevn', 'mean']
+export const ZIP_STACKS:   Stack[] = ['react', 'nextjs', 'express', 'nestjs', 'fastapi', 'django', 'mern', 'pern', 't3', 'mevn', 'mean']
 export const CLI_STACKS:   Stack[] = ['laravel', 'nestjs', 'django', 'rails', 'express', 'fastapi']
-export const MIXED_STACKS: Stack[] = ['laravel+react', 'laravel+nextjs', 'nestjs+react', 'express+react', 'fastapi+react', 'fastapi+nextjs', 'mern', 'pern', 't3', 'mevn', 'mean']
+export const MIXED_STACKS: Stack[] = ['laravel+react', 'laravel+nextjs', 'nestjs+react', 'express+react', 'fastapi+react', 'fastapi+nextjs', 'mern', 'pern', 'mevn', 'mean']
 
 export const isZipStack   = (s: Stack) => ZIP_STACKS.includes(s)   || MIXED_STACKS.includes(s)
 export const isCliStack   = (s: Stack) => CLI_STACKS.includes(s)   || MIXED_STACKS.includes(s)
@@ -25,7 +26,8 @@ export const isMixedStack = (s: Stack) => MIXED_STACKS.includes(s)
 const REQUIRES_EXPRESS = ['express', 'express+react', 'mern', 'pern', 'mevn', 'mean']
 const REQUIRES_FASTAPI = ['fastapi', 'fastapi+react', 'fastapi+nextjs']
 const REQUIRES_NESTJS  = ['nestjs', 'nestjs+react']
-const REQUIRES_REACT   = ['react', 'express+react', 'nestjs+react', 'fastapi+react', 'mern', 'pern', 'mevn', 'mean']
+const REQUIRES_REACT   = ['react', 'express+react', 'nestjs+react', 'fastapi+react', 'mern', 'pern']
+const REQUIRES_VUE     = ['mevn']
 
 export const ServiceIdSchema = z.enum(['auth', 'email', 'cache', 'websockets', 'queue', 'file-upload'])
 export type ServiceId = z.infer<typeof ServiceIdSchema>
@@ -39,6 +41,7 @@ export const ProjectConfigSchema = z.object({
   services:     z.array(ServiceIdSchema).optional(),
   laravel:      LaravelOptionsSchema.optional(),
   react:        ReactOptionsSchema.optional(),
+  vue:          VueOptionsSchema.optional(),
   express:      ExpressConfigSchema.optional(),
   nestjs:       NestConfigSchema.optional(),
   fastapi:      FastAPIConfigSchema.optional(),
@@ -66,6 +69,10 @@ export const ProjectConfigSchema = z.object({
 
   if (REQUIRES_REACT.includes(data.stack) && !data.react) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['react'], message: 'Config React requise.' })
+  }
+
+  if (REQUIRES_VUE.includes(data.stack) && !data.vue) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['vue'], message: 'Config Vue requise pour le stack MEVN.' })
   }
 
   const { valid, errors } = validateForeignKeys(data.models)

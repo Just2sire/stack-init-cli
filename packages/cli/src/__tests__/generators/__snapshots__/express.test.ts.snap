@@ -1,0 +1,21 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ExpressGenerator — mongoose/mongodb (MERN) > generates the expected file paths 1`] = `
+[
+  ".env.example",
+  "src/controllers/post.controller.ts",
+  "src/models/post.model.ts",
+  "src/routes/index.ts",
+  "src/routes/post.routes.ts",
+]
+`;
+
+exports[`ExpressGenerator — prisma/postgresql > generates the expected file paths 1`] = `
+[
+  ".env.example",
+  "prisma/schema.prisma",
+  "src/controllers/post.controller.ts",
+  "src/routes/index.ts",
+  "src/routes/post.routes.ts",
+]
+`;

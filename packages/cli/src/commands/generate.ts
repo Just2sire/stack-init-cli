@@ -11,6 +11,7 @@ import { NestGenerator } from '../generators/nest/index'
 import { FastAPIGenerator } from '../generators/fastapi/index'
 import { ZipGenerator } from '../generators/zip/index'
 import { NextJSGenerator } from '../generators/nextjs/index'
+import { ReactGenerator } from '../generators/react/index'
 import { writeFiles, type GeneratedFile } from '../utils/fs'
 import { generateMakefile, generateBashRunner } from '../generators/runner/makefile'
 import {
@@ -20,6 +21,11 @@ import {
 import { buildTerminalSummary, buildGettingStartedMd } from '../utils/setup-instructions'
 import { generateServices } from '../generators/services/index'
 import { generateFrontendApi } from '../generators/frontend-api/index'
+import { generateCICD } from '../generators/cicd/index'
+import { VueGenerator } from '../generators/vue/index'
+import { T3Generator } from '../generators/t3/index'
+import { DjangoGenerator } from '../generators/django/index'
+import { generateDockerFiles } from '../generators/docker/index'
 
 export interface GenerateOptions {
   config: string
@@ -63,9 +69,14 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     console.error(pc.red(`\n  ✗ Stack "${config.stack}" requires a "laravel:" section in the config.\n`))
     process.exit(1)
   }
-  if ((stackStr === 'mevn' || stackStr === 'mean') && !process.env.STACK_INIT_ALLOW_UNSUPPORTED) {
-    console.error(pc.red(`\n  ✗ Stack "${config.stack}" is not yet supported by the CLI generator.\n`))
-    console.error(pc.yellow(`  Supported stacks: laravel, express, nestjs, fastapi, and their combos with react/nextjs.\n`))
+  if (stackStr === 'mean' && !process.env.STACK_INIT_ALLOW_UNSUPPORTED) {
+    console.error(pc.red(`\n  ✗ Stack "mean" (Angular) is not yet supported by the CLI generator.\n`))
+    console.error(pc.yellow(`  Use "mevn" (Vue) or another supported stack instead.\n`))
+    process.exit(1)
+  }
+  if (stackStr === 'rails' && !process.env.STACK_INIT_ALLOW_UNSUPPORTED) {
+    console.error(pc.red(`\n  ✗ Stack "rails" is not yet supported by the CLI generator.\n`))
+    console.error(pc.yellow(`  Supported stacks: laravel, express, nestjs, fastapi, django, and their combos with react/nextjs.\n`))
     process.exit(1)
   }
 
@@ -146,6 +157,16 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
+  // -- Django --
+  if (config.stack === 'django') {
+    console.log(pc.bold('  Django'))
+    const generator = new DjangoGenerator()
+    const result    = await generator.generate(config, projectRoot)
+    result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
+    allGeneratedFiles.push(...result.files)
+    result.files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
+  }
+
   // -- Next.js (model-aware generator) --
   if (config.stack.includes('nextjs')) {
     console.log(pc.bold('  Next.js'))
@@ -159,12 +180,35 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
-  // -- React SPA (static ZIP template) --
-  if (config.stack.includes('react') && !config.stack.includes('nextjs')) {
-    console.log(pc.bold('  React'))
-    const generator = new ZipGenerator()
-    const result    = await generator.generate(config, projectRoot, 'react')
+  // -- React SPA (Vite) --
+  if (config.stack.includes('react') && !config.stack.includes('nextjs') && config.stack !== 'mevn') {
+    console.log(pc.bold('  React (Vite)'))
+    const generator = new ReactGenerator()
+    const result    = await generator.generate(config, projectRoot)
     const subfolder = isMixed ? 'frontend' : '.'
+
+    result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
+    const files = result.files.map(f => ({ ...f, outputPath: path.join(subfolder, f.outputPath) }))
+    allGeneratedFiles.push(...files)
+    files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
+  }
+
+  // -- T3 Stack (Next.js + tRPC + Prisma + Tailwind) --
+  if (config.stack === 't3') {
+    console.log(pc.bold('  T3 Stack'))
+    const generator = new T3Generator()
+    const result    = await generator.generate(config, projectRoot)
+    result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
+    allGeneratedFiles.push(...result.files)
+    result.files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
+  }
+
+  // -- Vue 3 (Vite) — used for MEVN stack --
+  if (config.stack === 'mevn') {
+    console.log(pc.bold('  Vue 3 (Vite)'))
+    const generator = new VueGenerator()
+    const result    = await generator.generate(config, projectRoot)
+    const subfolder = 'frontend'
 
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     const files = result.files.map(f => ({ ...f, outputPath: path.join(subfolder, f.outputPath) }))
@@ -207,22 +251,20 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     allGeneratedFiles.push({ outputPath: 'Makefile', content: makefileContent })
     console.log(`  ${pc.green('✓')} Makefile (global)`)
 
-    // Docker Compose (Simple version)
-    let dockerCompose = `version: '3.8'\n\nservices:\n`
-    
-    if (config.stack.includes('laravel')) {
-      // Laravel is at root, not in a backend/ subfolder
-      dockerCompose += `  backend:\n    build:\n      context: .\n      dockerfile: Dockerfile\n    volumes:\n      - .:/var/www/html\n    ports:\n      - "8000:8000"\n\n`
-    } else {
-      dockerCompose += `  backend:\n    build: ./backend\n    ports:\n      - "3000:3000"\n    volumes:\n      - ./backend:/app\n\n`
-    }
-
-    dockerCompose += `  frontend:\n    build: ./frontend\n    ports:\n      - "5173:5173"\n    volumes:\n      - ./frontend:/app\n`
-
-    allGeneratedFiles.push({ outputPath: 'docker-compose.yml', content: dockerCompose })
-    console.log(`  ${pc.green('✓')} docker-compose.yml`)
   }
 
+  // Docker files (compose + Dockerfiles + .dockerignore)
+  console.log(pc.bold('  Docker'))
+  const dockerFiles = generateDockerFiles(config, isMixed)
+  allGeneratedFiles.push(...dockerFiles)
+  dockerFiles.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
+
+
+  // 5a. GitHub Actions CI/CD
+  console.log(pc.bold('  CI/CD'))
+  const ciFiles = generateCICD(config)
+  allGeneratedFiles.push(...ciFiles)
+  ciFiles.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
 
   // 5. Scripts cross-platform (setup + dev) + GETTING_STARTED.md
   allGeneratedFiles.push({ outputPath: 'setup.sh',  content: generateSetupSh(config) })

@@ -13,7 +13,7 @@ export const ReactModelPagesSchema = z.record(z.string(), ReactPageOptionsSchema
 export const ReactOptionsSchema = z.object({
   architecture:  z.enum(['feature-based', 'layer-based', 'minimal']).default('feature-based'),
   state_lib:     z.enum(['zustand', 'redux-toolkit', 'jotai', 'none']).default('zustand'),
-  form_lib:      z.enum(['react-hook-form', 'formik', 'none']).default('react-hook-form'),
+  form_lib:      z.enum(['react-hook-form', 'formik', 'zod', 'none']).default('react-hook-form'),
   ui_lib:        z.enum(['shadcn', 'mui', 'antd', 'chakra', 'none']).default('shadcn'),
   http_lib:      z.enum(['axios', 'ky', 'fetch']).default('axios'),
   data_fetching: z.enum(['tanstack-query', 'swr', 'none']).default('tanstack-query'),
