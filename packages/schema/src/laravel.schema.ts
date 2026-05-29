@@ -11,5 +11,6 @@ export const LaravelOptionsSchema = z.object({
   use_enum_backed:  z.boolean().default(true),
   route_prefix:     z.string().default('api'),
   db_engine:        z.enum(['mysql', 'pgsql', 'sqlite', 'sqlsrv']).default('mysql'),
+  use_redis:        z.boolean().default(false),
 })
 export type LaravelOptions = z.infer<typeof LaravelOptionsSchema>

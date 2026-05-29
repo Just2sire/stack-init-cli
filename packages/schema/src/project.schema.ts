@@ -32,14 +32,26 @@ const REQUIRES_VUE     = ['mevn']
 export const ServiceIdSchema = z.enum(['auth', 'email', 'cache', 'websockets', 'queue', 'file-upload'])
 export type ServiceId = z.infer<typeof ServiceIdSchema>
 
+export const LaravelPluginIdSchema = z.enum([
+  'notifications',
+  'socialite',
+  'spatie-permissions',
+  'spatie-media',
+  'spatie-activity',
+  'horizon',
+  'two-factor-auth',
+])
+export type LaravelPluginId = z.infer<typeof LaravelPluginIdSchema>
+
 export const ProjectConfigSchema = z.object({
-  name:         z.string().min(1).regex(/^[a-z][a-z0-9_-]*$/, 'Nom en kebab-case ou snake_case (lettres minuscules, chiffres, tirets et underscores autorisés)'),
-  description:  z.string().optional(),
-  version:      z.string().default('0.1.0'),
-  stack:        StackSchema,
-  models:       z.array(ModelSchema).min(1, 'Définit au moins un modèle'),
-  services:     z.array(ServiceIdSchema).optional(),
-  laravel:      LaravelOptionsSchema.optional(),
+  name:            z.string().min(1).regex(/^[a-z][a-z0-9_-]*$/, 'Nom en kebab-case ou snake_case (lettres minuscules, chiffres, tirets et underscores autorisés)'),
+  description:     z.string().optional(),
+  version:         z.string().default('0.1.0'),
+  stack:           StackSchema,
+  models:          z.array(ModelSchema).min(1, 'Définit au moins un modèle'),
+  services:        z.array(ServiceIdSchema).optional(),
+  laravel_plugins: z.array(LaravelPluginIdSchema).optional(),
+  laravel:         LaravelOptionsSchema.optional(),
   react:        ReactOptionsSchema.optional(),
   vue:          VueOptionsSchema.optional(),
   express:      ExpressConfigSchema.optional(),

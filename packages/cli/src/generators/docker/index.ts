@@ -28,6 +28,12 @@ export function generateDockerFiles(config: ProjectConfig, isMixed: boolean): Ge
 
   const pythonVersion = config.fastapi?.python_version ?? '3.11'
   const phpVersion    = config.laravel?.php_version    ?? '8.4'
+  const laravelDbEngine  = config.laravel?.db_engine ?? 'mysql'
+  const laravelUseRedis  = isLaravel && (config.laravel?.use_redis ?? false)
+  const laravelHasQueues = isLaravel && (
+    laravelUseRedis ||
+    config.models.some(m => m.generate.observer && m.generate.events)
+  )
 
   // ── docker-compose.yml ──────────────────────────────────────────────────────
   const svcs: string[] = []
@@ -120,7 +126,76 @@ export function generateDockerFiles(config: ProjectConfig, isMixed: boolean): Ge
     depends_on:
       ${dbService}:
         condition: service_healthy`)
-  } else if (isExpress || isNest || isFastapi || isLaravel) {
+  } else if (isLaravel) {
+    svcs.push(`  backend:
+    build:
+      context: ${backendContext}
+      target: production
+    restart: unless-stopped
+    env_file:
+      - ${envFile}
+    networks:
+      - app-network
+    depends_on:
+      ${dbService}:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s`)
+
+    // Nginx reverse proxy for Laravel (PHP-FPM)
+    svcs.push(`  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - .:/var/www/html:ro
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy`)
+
+    // Optional Redis
+    if (laravelUseRedis) {
+      svcs.push(`  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5`)
+    }
+
+    // Queue worker (when redis or observer+events are enabled)
+    if (laravelHasQueues) {
+      const queueDepends = laravelUseRedis
+        ? `${dbService}:\n        condition: service_healthy\n      redis:\n        condition: service_healthy`
+        : `${dbService}:\n        condition: service_healthy`
+      svcs.push(`  queue:
+    build:
+      context: ${backendContext}
+      target: production
+    restart: unless-stopped
+    command: php artisan queue:work --tries=3 --sleep=3
+    env_file:
+      - ${envFile}
+    networks:
+      - app-network
+    depends_on:
+      ${queueDepends}`)
+    }
+  } else if (isExpress || isNest || isFastapi) {
     svcs.push(`  backend:
     build:
       context: ${backendContext}
@@ -155,6 +230,7 @@ export function generateDockerFiles(config: ProjectConfig, isMixed: boolean): Ge
     isPostgres && 'postgres_data:',
     isMysql    && 'mysql_data:',
     isMongo    && 'mongo_data:',
+    laravelUseRedis && 'redis_data:',
   ].filter(Boolean)
 
   const dockerCompose = [
@@ -262,6 +338,12 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
       content: `__pycache__\n*.pyc\n*.pyo\n.venv\nvenv\n.env\n*.egg-info\ndist\n.pytest_cache\n`,
     })
   } else if (isLaravel) {
+    const dbExtensions = laravelDbEngine === 'pgsql'
+      ? 'pdo pdo_pgsql bcmath zip gd'
+      : 'pdo pdo_mysql bcmath zip gd'
+    const redisExtBlock = laravelUseRedis
+      ? `\nRUN apk add --no-cache $PHPIZE_DEPS \\\n    && pecl install redis \\\n    && docker-php-ext-enable redis \\\n    && apk del $PHPIZE_DEPS`
+      : ''
     files.push({
       outputPath: 'Dockerfile',
       content: `FROM composer:2 AS builder
@@ -271,8 +353,8 @@ RUN composer install --no-dev --no-scripts --optimize-autoloader
 
 FROM php:${phpVersion}-fpm-alpine AS production
 WORKDIR /var/www/html
-RUN apk add --no-cache libpng-dev libzip-dev zip \\
-    && docker-php-ext-install pdo pdo_mysql bcmath zip gd
+RUN apk add --no-cache libpng-dev libzip-dev libpq-dev zip \\
+    && docker-php-ext-install ${dbExtensions}${redisExtBlock}
 COPY --from=builder /app/vendor ./vendor
 COPY . .
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
@@ -283,6 +365,11 @@ CMD ["php-fpm"]
     files.push({
       outputPath: '.dockerignore',
       content: `vendor\nnode_modules\n.env\nstorage/logs/*\nstorage/framework/cache/*\nstorage/framework/sessions/*\nstorage/framework/views/*\nbootstrap/cache/*\npublic/hot\n`,
+    })
+    // Nginx config for PHP-FPM reverse proxy
+    files.push({
+      outputPath: 'docker/nginx/nginx.conf',
+      content: laravelNginxConf(),
     })
   } else if (isExpress || isNest) {
     const dockerfilePath = isMixed ? 'backend/Dockerfile' : 'Dockerfile'
@@ -429,6 +516,41 @@ CMD ["nginx", "-g", "daemon off;"]
   }
 
   return files
+}
+
+function laravelNginxConf(): string {
+  return `server {
+    listen 80;
+    server_name localhost;
+    root /var/www/html/public;
+    index index.php;
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location ~ \\.php$ {
+        fastcgi_pass backend:9000;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_hide_header X-Powered-By;
+    }
+
+    location ~ /\\.(?!well-known).* {
+        deny all;
+    }
+}
+`
 }
 
 function nginxConf(): string {

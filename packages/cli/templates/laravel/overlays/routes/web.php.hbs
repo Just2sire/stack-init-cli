@@ -1,0 +1,20 @@
+<?php
+
+use Illuminate\Support\Facades\Route;
+{{#each models}}
+{{#if generate.routes}}
+use App\Http\Controllers\Api\{{name}}Controller;
+{{/if}}
+{{/each}}
+
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
+
+{{#each models}}
+{{#if generate.routes}}
+Route::resource('{{routeName}}', {{name}}Controller::class);
+{{/if}}
+{{/each}}

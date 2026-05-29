@@ -1,0 +1,28 @@
+<?php
+{{#if laravelOptions.use_strict_types}}
+
+declare(strict_types=1);
+{{/if}}
+
+namespace App\Http\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\ResourceCollection;
+
+class {{name}}Collection extends ResourceCollection
+{
+    public $collects = {{name}}Resource::class;
+
+    public function toArray(Request $request): array
+    {
+        return [
+            'data' => $this->collection,
+            'meta' => [
+                'total'        => $this->collection->count(),
+                'per_page'     => $this->resource->perPage(),
+                'current_page' => $this->resource->currentPage(),
+                'last_page'    => $this->resource->lastPage(),
+            ],
+        ];
+    }
+}

@@ -1,0 +1,48 @@
+<?php
+{{#if laravelOptions.use_strict_types}}
+
+declare(strict_types=1);
+{{/if}}
+
+namespace App\Observers;
+
+use App\Models\{{name}};
+{{#if generate.events}}
+use App\Events\{{name}}Created;
+use App\Events\{{name}}Updated;
+use App\Events\{{name}}Deleted;
+{{/if}}
+
+class {{name}}Observer
+{
+    public function created({{name}} ${{varName}}): void
+    {
+{{#if generate.events}}
+        event(new {{name}}Created(${{varName}}));
+{{/if}}
+    }
+
+    public function updated({{name}} ${{varName}}): void
+    {
+{{#if generate.events}}
+        event(new {{name}}Updated(${{varName}}));
+{{/if}}
+    }
+
+    public function deleted({{name}} ${{varName}}): void
+    {
+{{#if generate.events}}
+        event(new {{name}}Deleted(${{varName}}));
+{{/if}}
+    }
+{{#if generate.softDelete}}
+
+    public function restored({{name}} ${{varName}}): void
+    {
+    }
+
+    public function forceDeleted({{name}} ${{varName}}): void
+    {
+    }
+{{/if}}
+}

@@ -1,0 +1,25 @@
+@extends('layouts.app')
+
+@section('title', 'Edit {{name}}')
+
+@section('content')
+<div class="container">
+    <h1>Edit {{name}} #{{ ${{varName}}->id }}</h1>
+
+    <form method="POST" action="{{ route('{{routeName}}.update', ${{varName}}) }}">
+        @csrf @method('PUT')
+
+        {{-- TODO: add form fields --}}
+        {{-- Fields: {{#each fields}}{{name}} ({{type}}){{#unless @last}}, {{/unless}}{{/each}} --}}
+
+        @if ($errors->any())
+            <div class="alert alert-danger">
+                @foreach ($errors->all() as $error) <p>{{ $error }}</p> @endforeach
+            </div>
+        @endif
+
+        <button type="submit" class="btn btn-primary">Update</button>
+        <a href="{{ route('{{routeName}}.index') }}">Cancel</a>
+    </form>
+</div>
+@endsection

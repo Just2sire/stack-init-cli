@@ -1,0 +1,31 @@
+@extends('layouts.app')
+
+@section('title', '{{namePlural}}')
+
+@section('content')
+<div class="container">
+    <div class="d-flex justify-content-between mb-3">
+        <h1>{{namePlural}}</h1>
+        <a href="{{ route('{{routeName}}.create') }}" class="btn btn-primary">New {{name}}</a>
+    </div>
+
+    {{-- List all {{namePlural}} --}}
+    {{-- Fields: {{#each fields}}{{name}}{{#unless @last}}, {{/unless}}{{/each}} --}}
+    @foreach(${{camelCasePlural name}} as ${{varName}})
+        <div class="card mb-2">
+            <div class="card-body">
+                <p>{{ ${{varName}}->id }}</p>
+                {{-- TODO: display {{varName}} fields --}}
+                <a href="{{ route('{{routeName}}.show', ${{varName}}) }}">View</a>
+                <a href="{{ route('{{routeName}}.edit', ${{varName}}) }}">Edit</a>
+                <form method="POST" action="{{ route('{{routeName}}.destroy', ${{varName}}) }}" style="display:inline">
+                    @csrf @method('DELETE')
+                    <button type="submit">Delete</button>
+                </form>
+            </div>
+        </div>
+    @endforeach
+
+    {{ ${{camelCasePlural name}}->links() }}
+</div>
+@endsection

@@ -1,0 +1,23 @@
+<?php
+{{#if laravelOptions.use_strict_types}}
+
+declare(strict_types=1);
+{{/if}}
+
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+{{#each observerModels}}
+use App\Models\{{name}};
+use App\Observers\{{name}}Observer;
+{{/each}}
+
+class ObserverServiceProvider extends ServiceProvider
+{
+    public function boot(): void
+    {
+{{#each observerModels}}
+        {{name}}::observe({{name}}Observer::class);
+{{/each}}
+    }
+}

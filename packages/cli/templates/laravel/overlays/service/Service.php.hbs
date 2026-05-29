@@ -1,12 +1,19 @@
 <?php
+{{#if laravelOptions.use_strict_types}}
 
 declare(strict_types=1);
+{{/if}}
 
 namespace App\Services;
 
-use App\Models\\{{name}};
+use App\Models\{{name}};
 {{#if generate.repository}}
-use App\Repositories\\{{name}}Repository;
+use App\Repositories\{{name}}Repository;
+{{/if}}
+{{#if generate.actions}}
+use App\Actions\{{name}}\Create{{name}}Action;
+use App\Actions\{{name}}\Update{{name}}Action;
+use App\Actions\{{name}}\Delete{{name}}Action;
 {{/if}}
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
@@ -15,7 +22,7 @@ class {{name}}Service
 {
 {{#if generate.repository}}
     public function __construct(
-        private readonly {{name}}Repository $repository
+        private {{#if laravelOptions.use_readonly}}readonly {{/if}}{{name}}Repository $repository
     ) {}
 
     public function paginate(Request $request): LengthAwarePaginator
@@ -38,6 +45,33 @@ class {{name}}Service
         $this->repository->delete(${{varName}});
     }
 {{else}}
+{{#if generate.actions}}
+    public function __construct(
+        private {{#if laravelOptions.use_readonly}}readonly {{/if}}Create{{name}}Action $createAction,
+        private {{#if laravelOptions.use_readonly}}readonly {{/if}}Update{{name}}Action $updateAction,
+        private {{#if laravelOptions.use_readonly}}readonly {{/if}}Delete{{name}}Action $deleteAction
+    ) {}
+
+    public function paginate(Request $request): LengthAwarePaginator
+    {
+        return {{name}}::query()->paginate($request->integer('per_page', 15));
+    }
+
+    public function create(array $data): {{name}}
+    {
+        return $this->createAction->execute($data);
+    }
+
+    public function update({{name}} ${{varName}}, array $data): {{name}}
+    {
+        return $this->updateAction->execute(${{varName}}, $data);
+    }
+
+    public function delete({{name}} ${{varName}}): void
+    {
+        $this->deleteAction->execute(${{varName}});
+    }
+{{else}}
     public function paginate(Request $request): LengthAwarePaginator
     {
         return {{name}}::query()->paginate($request->integer('per_page', 15));
@@ -58,5 +92,6 @@ class {{name}}Service
     {
         ${{varName}}->delete();
     }
+{{/if}}
 {{/if}}
 }

@@ -1,0 +1,17 @@
+<?php
+{{#if laravelOptions.use_strict_types}}
+
+declare(strict_types=1);
+{{/if}}
+
+namespace App\Actions\{{name}};
+
+use App\Models\{{name}};
+
+class Delete{{name}}Action
+{
+    public function execute({{name}} ${{varName}}): void
+    {
+        ${{varName}}->delete();
+    }
+}

@@ -39,10 +39,15 @@ export const GenerateOptionsSchema = z.object({
   service:     z.boolean().default(false),
   tests:       z.boolean().default(true),
   routes:      z.boolean().default(false),
-  // Nouveaux
+  // Nouveaux — NestJS / Express
   dto:         z.boolean().default(true),   // NestJS : CreateDto + UpdateDto
   module:      z.boolean().default(true),   // NestJS : module dédié
   schema:      z.boolean().default(true),   // Express Prisma : bloc model dans schema.prisma
+  // Nouveaux — Laravel
+  observer:    z.boolean().default(false),  // ModelObserver (created/updated/deleted hooks)
+  events:      z.boolean().default(false),  // Events + queue Listeners par modèle
+  actions:     z.boolean().default(false),  // Action classes (Create/Update/Delete)
+  collection:  z.boolean().default(false),  // ResourceCollection avec pagination meta
 })
 export type GenerateOptions = z.infer<typeof GenerateOptionsSchema>
 

@@ -23,22 +23,86 @@ export class {{pascalName}}Repository {
   }
 }
 {{else if (eq expressConfig.orm "sequelize")}}
-// TODO: wire your Sequelize model here
+import { {{pascalName}} } from '../models/{{name}}.model';
+
 export class {{pascalName}}Repository {
-  async findAll() { return []; }
-  async findById(id: number) { return null; }
-  async create(data: any) { return data; }
-  async update(id: number, data: any) { return data; }
-  async delete(id: number) { return; }
+  async findAll() {
+    return {{pascalName}}.findAll();
+  }
+
+  async findById(id: number) {
+    return {{pascalName}}.findByPk(id);
+  }
+
+  async create(data: any) {
+    return {{pascalName}}.create(data);
+  }
+
+  async update(id: number, data: any) {
+    await {{pascalName}}.update(data, { where: { id } });
+    return {{pascalName}}.findByPk(id);
+  }
+
+  async delete(id: number) {
+    await {{pascalName}}.destroy({ where: { id } });
+  }
 }
 {{else if (eq expressConfig.orm "typeorm")}}
-// TODO: wire your TypeORM repository here
+import { AppDataSource } from '../lib/dataSource';
+import { {{pascalName}} } from '../entities/{{pascalName}}.entity';
+
 export class {{pascalName}}Repository {
-  async findAll() { return []; }
-  async findById(id: number) { return null; }
-  async create(data: any) { return data; }
-  async update(id: number, data: any) { return data; }
-  async delete(id: number) { return; }
+  private repo = AppDataSource.getRepository({{pascalName}});
+
+  async findAll() {
+    return this.repo.find();
+  }
+
+  async findById(id: number) {
+    return this.repo.findOne({ where: { id } as any });
+  }
+
+  async create(data: any) {
+    return this.repo.save(this.repo.create(data));
+  }
+
+  async update(id: number, data: any) {
+    await this.repo.update(id, data);
+    return this.repo.findOne({ where: { id } as any });
+  }
+
+  async delete(id: number) {
+    await this.repo.delete(id);
+  }
+}
+{{else if (eq expressConfig.orm "drizzle")}}
+import { eq } from 'drizzle-orm';
+import { db } from '../db';
+import { {{camelName}}s } from '../db/schema';
+
+export class {{pascalName}}Repository {
+  async findAll() {
+    return db.select().from({{camelName}}s);
+  }
+
+  async findById(id: number) {
+    const rows = await db.select().from({{camelName}}s).where(eq({{camelName}}s.id, id));
+    return rows[0] ?? null;
+  }
+
+  async create(data: any) {
+    const rows = await db.insert({{camelName}}s).values(data).returning();
+    return rows[0];
+  }
+
+  async update(id: number, data: any) {
+    const rows = await db.update({{camelName}}s).set(data).where(eq({{camelName}}s.id, id)).returning();
+    return rows[0] ?? null;
+  }
+
+  async delete(id: number) {
+    await db.delete({{camelName}}s).where(eq({{camelName}}s.id, id));
+  }
 }
 {{else if (eq expressConfig.orm "prisma")}}
 import { PrismaClient } from '@prisma/client';

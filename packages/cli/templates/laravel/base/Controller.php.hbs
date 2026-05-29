@@ -1,20 +1,25 @@
 <?php
+{{#if laravelOptions.use_strict_types}}
 
 declare(strict_types=1);
+{{/if}}
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\\{{name}};
+use App\Models\{{name}};
 {{#if generate.resource}}
-use App\Http\Resources\\{{name}}Resource;
+use App\Http\Resources\{{name}}Resource;
+{{/if}}
+{{#if generate.collection}}
+use App\Http\Resources\{{name}}Collection;
 {{/if}}
 {{#if generate.request}}
 use App\Http\Requests\Store{{name}}Request;
 use App\Http\Requests\Update{{name}}Request;
 {{/if}}
 {{#if generate.service}}
-use App\Services\\{{name}}Service;
+use App\Services\{{name}}Service;
 {{/if}}
 use Illuminate\Http\{JsonResponse, Request};
 
@@ -22,7 +27,7 @@ class {{name}}Controller extends Controller
 {
 {{#if generate.service}}
     public function __construct(
-        private readonly {{name}}Service $service
+        private {{#if laravelOptions.use_readonly}}readonly {{/if}}{{name}}Service $service
     ) {}
 
 {{/if}}
@@ -30,10 +35,11 @@ class {{name}}Controller extends Controller
      * Display a listing of the resource.
      {{#if generate.swagger}}
      * @OA\Get(
-     *     path="/api/{{routeName}}",
+     *     path="/{{laravelOptions.route_prefix}}/{{routeName}}",
      *     operationId="get{{name}}List",
      *     tags={"{{name}}"},
      *     summary="Get list of {{name}}",
+     *     @OA\Parameter(name="per_page", in="query", required=false, @OA\Schema(type="integer", example=15)),
      *     @OA\Response(response=200, description="Successful operation")
      * )
      {{/if}}
@@ -45,7 +51,9 @@ class {{name}}Controller extends Controller
 {{else}}
         $items = {{name}}::query()->paginate($request->integer('per_page', 15));
 {{/if}}
-{{#if generate.resource}}
+{{#if generate.collection}}
+        return (new {{name}}Collection($items))->response();
+{{else if generate.resource}}
         return {{name}}Resource::collection($items)->response();
 {{else}}
         return response()->json($items);
@@ -56,11 +64,11 @@ class {{name}}Controller extends Controller
      * Display the specified resource.
      {{#if generate.swagger}}
      * @OA\Get(
-     *     path="/api/{{routeName}}/{id}",
+     *     path="/{{laravelOptions.route_prefix}}/{{routeName}}/{id}",
      *     operationId="get{{name}}ById",
      *     tags={"{{name}}"},
      *     summary="Get {{name}} information",
-     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="{{idType}}")),
      *     @OA\Response(response=200, description="Successful operation"),
      *     @OA\Response(response=404, description="Resource not found")
      * )
@@ -79,11 +87,17 @@ class {{name}}Controller extends Controller
      * Store a newly created resource in storage.
      {{#if generate.swagger}}
      * @OA\Post(
-     *     path="/api/{{routeName}}",
+     *     path="/{{laravelOptions.route_prefix}}/{{routeName}}",
      *     operationId="store{{name}}",
      *     tags={"{{name}}"},
      *     summary="Store new {{name}}",
-     *     @OA\RequestBody(required=true, @OA\JsonContent()),
+     *     @OA\RequestBody(required=true,
+     *         @OA\JsonContent(
+{{#each swaggerFields}}
+     *             @OA\Property(property="{{name}}", type="{{oaType}}"{{#if nullable}}, nullable=true{{/if}}),
+{{/each}}
+     *         )
+     *     ),
      *     @OA\Response(response=201, description="Resource created"),
      *     @OA\Response(response=422, description="Validation error")
      * )
@@ -107,12 +121,18 @@ class {{name}}Controller extends Controller
      * Update the specified resource in storage.
      {{#if generate.swagger}}
      * @OA\Put(
-     *     path="/api/{{routeName}}/{id}",
+     *     path="/{{laravelOptions.route_prefix}}/{{routeName}}/{id}",
      *     operationId="update{{name}}",
      *     tags={"{{name}}"},
      *     summary="Update existing {{name}}",
-     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
-     *     @OA\RequestBody(required=true, @OA\JsonContent()),
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="{{idType}}")),
+     *     @OA\RequestBody(required=true,
+     *         @OA\JsonContent(
+{{#each swaggerFields}}
+     *             @OA\Property(property="{{name}}", type="{{oaType}}"{{#if nullable}}, nullable=true{{/if}}),
+{{/each}}
+     *         )
+     *     ),
      *     @OA\Response(response=200, description="Successful operation"),
      *     @OA\Response(response=404, description="Resource not found"),
      *     @OA\Response(response=422, description="Validation error")
@@ -138,11 +158,11 @@ class {{name}}Controller extends Controller
      * Remove the specified resource from storage.
      {{#if generate.swagger}}
      * @OA\Delete(
-     *     path="/api/{{routeName}}/{id}",
+     *     path="/{{laravelOptions.route_prefix}}/{{routeName}}/{id}",
      *     operationId="delete{{name}}",
      *     tags={"{{name}}"},
      *     summary="Delete {{name}}",
-     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="integer")),
+     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="{{idType}}")),
      *     @OA\Response(response=204, description="Successful operation"),
      *     @OA\Response(response=404, description="Resource not found")
      * )

@@ -1,0 +1,40 @@
+<?php
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+{{#each models}}
+
+// {{name}} — minimal inline routes
+Route::get('{{routeName}}', fn(Request $request) =>
+    \App\Models\{{name}}::query()->paginate($request->integer('per_page', 15))
+);
+
+Route::get('{{routeName}}/{id}', fn(int|string $id) =>
+    \App\Models\{{name}}::findOrFail($id)
+);
+
+Route::post('{{routeName}}', function (Request $request) {
+    $item = \App\Models\{{name}}::create($request->validate([
+{{#each validationRules}}
+        '{{name}}' => {{{rules}}},
+{{/each}}
+    ]));
+    return response()->json($item, 201);
+});
+
+Route::put('{{routeName}}/{id}', function (Request $request, int|string $id) {
+    $item = \App\Models\{{name}}::findOrFail($id);
+    $item->update($request->validate([
+{{#each validationRules}}
+        '{{name}}' => {{{rulesUpdate}}},
+{{/each}}
+    ]));
+    return response()->json($item);
+});
+
+Route::delete('{{routeName}}/{id}', function (int|string $id) {
+    \App\Models\{{name}}::findOrFail($id)->delete();
+    return response()->json(null, 204);
+});
+{{/each}}
+// @stack-init-routes-end

@@ -1,0 +1,25 @@
+@extends('layouts.app')
+
+@section('title', 'Create {{name}}')
+
+@section('content')
+<div class="container">
+    <h1>Create {{name}}</h1>
+
+    <form method="POST" action="{{ route('{{routeName}}.store') }}">
+        @csrf
+
+        {{-- TODO: add form fields --}}
+        {{-- Fields: {{#each fields}}{{name}} ({{type}}){{#unless @last}}, {{/unless}}{{/each}} --}}
+
+        @if ($errors->any())
+            <div class="alert alert-danger">
+                @foreach ($errors->all() as $error) <p>{{ $error }}</p> @endforeach
+            </div>
+        @endif
+
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{{ route('{{routeName}}.index') }}">Cancel</a>
+    </form>
+</div>
+@endsection

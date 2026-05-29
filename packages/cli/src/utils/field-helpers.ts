@@ -144,6 +144,20 @@ export function fieldToValidationRule(field: NamedField, tableName: string): str
   return rules
 }
 
+export function fieldToSwaggerType(field: NamedField): string {
+  const intTypes = [
+    'tinyInteger','smallInteger','mediumInteger','integer','bigInteger',
+    'unsignedTinyInteger','unsignedSmallInteger','unsignedInteger','unsignedBigInteger','year',
+    'foreignId',
+  ]
+  const floatTypes = ['float','double','decimal']
+  if (intTypes.includes(field.type)) return 'integer'
+  if (floatTypes.includes(field.type)) return 'number'
+  if (field.type === 'boolean') return 'boolean'
+  if (field.type === 'json' || field.type === 'jsonb') return 'object'
+  return 'string'
+}
+
 export function fieldToFaker(field: NamedField): string {
   const n = field.name.toLowerCase()
   if (n === 'email' || n.endsWith('_email'))    return `fake()->unique()->safeEmail()`

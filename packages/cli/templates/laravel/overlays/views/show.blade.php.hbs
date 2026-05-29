@@ -1,0 +1,26 @@
+@extends('layouts.app')
+
+@section('title', '{{name}} #{{ ${{varName}}->id }}')
+
+@section('content')
+<div class="container">
+    <h1>{{name}} #{{ ${{varName}}->id }}</h1>
+
+    {{-- Fields: {{#each fields}}{{name}} ({{type}}){{#unless @last}}, {{/unless}}{{/each}} --}}
+    <dl>
+{{#each fields}}
+        <dt>{{name}}</dt>
+        <dd>{{ ${{../varName}}->{{name}} }}</dd>
+{{/each}}
+{{#if migration.timestamps}}
+        <dt>created_at</dt>
+        <dd>{{ ${{varName}}->created_at }}</dd>
+        <dt>updated_at</dt>
+        <dd>{{ ${{varName}}->updated_at }}</dd>
+{{/if}}
+    </dl>
+
+    <a href="{{ route('{{routeName}}.edit', ${{varName}}) }}" class="btn btn-secondary">Edit</a>
+    <a href="{{ route('{{routeName}}.index') }}">Back to list</a>
+</div>
+@endsection

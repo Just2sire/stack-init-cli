@@ -1,6 +1,8 @@
 <?php
+{{#if laravelOptions.use_strict_types}}
 
 declare(strict_types=1);
+{{/if}}
 
 use App\Models\\{{name}};
 {{#if hasUserRelation}}

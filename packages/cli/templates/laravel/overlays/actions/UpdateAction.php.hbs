@@ -1,0 +1,18 @@
+<?php
+{{#if laravelOptions.use_strict_types}}
+
+declare(strict_types=1);
+{{/if}}
+
+namespace App\Actions\{{name}};
+
+use App\Models\{{name}};
+
+class Update{{name}}Action
+{
+    public function execute({{name}} ${{varName}}, array $data): {{name}}
+    {
+        ${{varName}}->update($data);
+        return ${{varName}}->fresh();
+    }
+}
