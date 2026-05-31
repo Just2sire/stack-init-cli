@@ -6,6 +6,7 @@ import { configureHandlebars } from './handlebars'
 import { modelToTableName, modelToVarName, pluralize, pascalCase, kebabCase } from '../../utils/naming'
 import { type GeneratedFile } from '../../utils/fs'
 import { resolveTemplatesDir } from '../../utils/template-path'
+import { sortModelsByDependency } from '../../utils/model-sort'
 
 const TEMPLATES_DIR = resolveTemplatesDir('nest')
 
@@ -32,8 +33,10 @@ export class NestGenerator {
 
     const auth = config.nestjs.auth ?? 'none'
 
+    const sortedModels = sortModelsByDependency(config.models)
+
     // Generate modules for each model
-    for (const model of config.models) {
+    for (const model of sortedModels) {
       const modelResult = this.generateModelModule(model, config)
       result.files.push(...modelResult.files)
       result.warnings.push(...modelResult.warnings)
@@ -54,7 +57,7 @@ export class NestGenerator {
     // Smart injection for AppModule
     const appModulePath = path.join(projectRoot, 'src/app.module.ts')
     const allModuleNames = [
-      ...config.models.map(m => ({ name: `${pascalCase(m.name)}Module`, path: `./modules/${kebabCase(m.name)}/${kebabCase(m.name)}.module` })),
+      ...sortedModels.map(m => ({ name: `${pascalCase(m.name)}Module`, path: `./modules/${kebabCase(m.name)}/${kebabCase(m.name)}.module` })),
       ...(auth !== 'none' ? [{ name: 'AuthModule', path: './modules/auth/auth.module' }] : []),
     ]
 

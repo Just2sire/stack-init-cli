@@ -8,6 +8,7 @@ import { modelToTableName, modelToRouteName, modelToVarName, migrationTimestamp,
 import { type GeneratedFile } from '../../utils/fs'
 import { resolveTemplatesDir } from '../../utils/template-path'
 import { generateLaravelPlugins } from './plugins/index'
+import { sortModelsByDependency } from '../../utils/model-sort'
 
 const TEMPLATES_DIR = resolveTemplatesDir('laravel')
 
@@ -35,17 +36,44 @@ export class LaravelGenerator {
 
   async generate(config: ProjectConfig, projectRoot: string): Promise<GeneratorResult> {
     const result: GeneratorResult = { files: [], warnings: [] }
-
     const laravelAuth    = config.laravel?.auth    ?? 'none'
     const laravelPattern = config.laravel?.pattern ?? 'api-only'
+    const sortedModels   = sortModelsByDependency(config.models)
 
-    for (let i = 0; i < config.models.length; i++) {
-      const r = await this.generateModel(config.models[i], config, i, laravelPattern)
+    // ── Phase 0 — Pre-flight: snapshot patchable files before any write ────────
+    // Both api.php and DatabaseSeeder.php may already exist in the project and
+    // need to be patched rather than overwritten.  Reading them here — before
+    // any GeneratedFile is queued — ensures we always see the real on-disk state
+    // regardless of what the generator will later emit.
+    const existingApi    = fs.existsSync(path.join(projectRoot, 'routes/api.php'))
+      ? fs.readFileSync(path.join(projectRoot, 'routes/api.php'),  'utf-8') : null
+    const existingSeeder = fs.existsSync(path.join(projectRoot, 'database/seeders/DatabaseSeeder.php'))
+      ? fs.readFileSync(path.join(projectRoot, 'database/seeders/DatabaseSeeder.php'), 'utf-8') : null
+
+    // ── Phase 1 — Infrastructure (no model dependencies) ──────────────────────
+    result.files.push(this.generateEnvExample(config))
+
+    const hasAnySwagger = config.models.some(m => m.generate.swagger)
+    if (hasAnySwagger) {
+      result.files.push({ outputPath: 'config/l5-swagger.php', content: this.generateSwaggerConfig(config) })
+      result.files.push({ outputPath: 'composer.json',          content: this.generateComposerJson(config) })
+      result.warnings.push('Swagger enabled: run "php artisan l5-swagger:generate" after "composer update" to generate the OpenAPI spec at /api/documentation.')
+    }
+
+    // ── Phase 2 — Database + model layer (FK-ordered) ─────────────────────────
+    // Within each model: migration → eloquent model → requests → factory →
+    // repository → actions → service → resource → collection → controller →
+    // seeder → tests → observer → events/listeners.
+    // The topological sort ensures FK parents are always processed first.
+    for (let i = 0; i < sortedModels.length; i++) {
+      const r = await this.generateModel(sortedModels[i], config, i, laravelPattern)
       result.files.push(...r.files)
       result.warnings.push(...r.warnings)
     }
 
-    // Auth service generation
+    // ── Phase 3 — Auth controller + form requests ──────────────────────────────
+    // Must come before Phase 4 so the AuthController file exists when we inject
+    // auth routes into api.php.
     if (laravelAuth !== 'none') {
       const hasUserModel = config.models.some(m => m.name.toLowerCase() === 'user')
       if (!hasUserModel) {
@@ -54,193 +82,68 @@ export class LaravelGenerator {
       result.files.push(...this.generateAuthFiles(config))
     }
 
-    // .env.example
-    result.files.push(this.generateEnvExample(config))
-
-    // ── Routes ─────────────────────────────────────────────────────────────────
-    const modelsWithRoutes = config.models.filter(m => m.generate.routes)
+    // ── Phase 4 — Routes ───────────────────────────────────────────────────────
+    // Built after all controllers (model + auth) are determined.
+    // Uses the Phase-0 snapshot to decide: patch existing file vs. generate fresh.
+    // Both paths go through buildApiPhp() so the logic is never duplicated.
+    const modelsWithRoutes = sortedModels.filter(m => m.generate.routes)
 
     if (laravelPattern === 'minimal') {
-      // Minimal pattern: one api.php with inline closures, no controllers
       if (modelsWithRoutes.length > 0) {
         const minimalCtx = {
           models: modelsWithRoutes.map(m => {
             const ctx = this.buildContext(m, config)
-            return {
-              name:            m.name,
-              routeName:       modelToRouteName(m.name),
-              varName:         modelToVarName(m.name),
-              validationRules: ctx.validationRules,
-            }
+            return { name: m.name, routeName: modelToRouteName(m.name), varName: modelToVarName(m.name), validationRules: ctx.validationRules }
           }),
         }
-        result.files.push({
-          outputPath: 'routes/api.php',
-          content: this.render('overlays/routes/api-minimal.php.hbs', minimalCtx),
-        })
+        result.files.push({ outputPath: 'routes/api.php', content: this.render('overlays/routes/api-minimal.php.hbs', minimalCtx) })
       }
     } else {
-      // api-only and full patterns: resource controllers
       if (modelsWithRoutes.length > 0 || laravelAuth !== 'none') {
-        const routePath = path.join(projectRoot, 'routes/api.php')
-        const routeCtx = {
-          models: modelsWithRoutes.map(m => ({
-            name:      m.name,
-            routeName: modelToRouteName(m.name),
-            generate:  m.generate,
-          })),
-        }
-
-        if (fs.existsSync(routePath)) {
-          let content = fs.readFileSync(routePath, 'utf-8')
-          for (const model of routeCtx.models) {
-            const resourceLine = `Route::apiResource('${model.routeName}', ${model.name}Controller::class);`
-            const useLine = `use App\\Http\\Controllers\\Api\\${model.name}Controller;`
-
-            if (!content.includes(resourceLine)) {
-              const marker = '// @stack-init-routes-end'
-              if (content.includes(marker)) {
-                content = content.replace(marker, `${resourceLine}\n${marker}`)
-              } else {
-                content = content.trimEnd() + `\n${resourceLine}\n`
-              }
-            }
-
-            if (!content.includes(useLine)) {
-              const lines = content.split('\n')
-              const lastUseIdx = lines.reduce((last, line, i) =>
-                line.trimStart().startsWith('use ') ? i : last, -1)
-              if (lastUseIdx >= 0) {
-                lines.splice(lastUseIdx + 1, 0, useLine)
-                content = lines.join('\n')
-              } else {
-                content = content.replace('<?php', `<?php\n\n${useLine}`)
-              }
-            }
-          }
-
-          if (laravelAuth !== 'none') {
-            const authGuard  = laravelAuth === 'passport' ? 'api' : 'sanctum'
-            const authUse    = `use App\\Http\\Controllers\\Auth\\AuthController;`
-            const authRoutes = `Route::prefix('auth')->group(function () {\n    Route::post('register', [AuthController::class, 'register']);\n    Route::post('login',    [AuthController::class, 'login']);\n    Route::middleware('auth:${authGuard}')->group(function () {\n        Route::post('logout', [AuthController::class, 'logout']);\n        Route::get('me',      [AuthController::class, 'me']);\n    });\n});`
-            if (!content.includes(authUse)) {
-              const lines = content.split('\n')
-              const lastUseIdx = lines.reduce((last, line, i) =>
-                line.trimStart().startsWith('use ') ? i : last, -1)
-              if (lastUseIdx >= 0) {
-                lines.splice(lastUseIdx + 1, 0, authUse)
-                content = lines.join('\n')
-              } else {
-                content = content.replace('<?php', `<?php\n\n${authUse}`)
-              }
-            }
-            if (!content.includes('AuthController::class')) {
-              const marker = '// @stack-init-routes-end'
-              content = content.includes(marker)
-                ? content.replace(marker, `${authRoutes}\n${marker}`)
-                : content.trimEnd() + `\n\n${authRoutes}\n`
-            }
-          }
-
-          result.files.push({ outputPath: 'routes/api.php', content })
-        } else {
-          result.files.push({
-            outputPath: 'routes/api.php',
-            content: this.render('overlays/routes/api.php.hbs', routeCtx),
-          })
-          if (laravelAuth !== 'none') {
-            result.files.push(...this.generateAuthRoutesFile(laravelAuth))
-          }
-        }
+        const routeModels = modelsWithRoutes.map(m => ({ name: m.name, routeName: modelToRouteName(m.name), generate: m.generate }))
+        result.files.push({
+          outputPath: 'routes/api.php',
+          content: this.buildApiPhp(existingApi, routeModels, laravelAuth),
+        })
       }
 
-      // Full pattern: also generate web routes + blade views
       if (laravelPattern === 'full' && modelsWithRoutes.length > 0) {
-        const webCtx = {
-          models: modelsWithRoutes.map(m => ({
-            name:      m.name,
-            routeName: modelToRouteName(m.name),
-            generate:  m.generate,
-          })),
-        }
-        result.files.push({
-          outputPath: 'routes/web.php',
-          content: this.render('overlays/routes/web.php.hbs', webCtx),
-        })
+        const webCtx = { models: modelsWithRoutes.map(m => ({ name: m.name, routeName: modelToRouteName(m.name), generate: m.generate })) }
+        result.files.push({ outputPath: 'routes/web.php', content: this.render('overlays/routes/web.php.hbs', webCtx) })
 
         for (const model of modelsWithRoutes) {
           const ctx = this.buildContext(model, config)
           const routeName = modelToRouteName(model.name)
           for (const view of ['index', 'create', 'edit', 'show']) {
-            result.files.push({
-              outputPath: `resources/views/${routeName}/${view}.blade.php`,
-              content: this.render(`overlays/views/${view}.blade.php.hbs`, ctx),
-            })
+            result.files.push({ outputPath: `resources/views/${routeName}/${view}.blade.php`, content: this.render(`overlays/views/${view}.blade.php.hbs`, ctx) })
           }
         }
-        result.warnings.push(
-          'pattern:full — Blade views generated. Create a layouts/app.blade.php and add your UI framework to use them.'
-        )
+        result.warnings.push('pattern:full — Blade views generated. Create a layouts/app.blade.php and add your UI framework to use them.')
       }
     }
 
-    // ── DatabaseSeeder ──────────────────────────────────────────────────────────
-    const modelsWithSeeder = config.models.filter(m => m.generate.seeder)
+    // ── Phase 5 — Seeder layer (FK-ordered) ────────────────────────────────────
+    // Individual *Seeder files were already emitted in Phase 2.
+    // DatabaseSeeder is built here, after all seeders are known, so it can call
+    // them in topological order.  Uses the Phase-0 snapshot via buildDatabaseSeeder().
+    const modelsWithSeeder = sortedModels.filter(m => m.generate.seeder)
     if (modelsWithSeeder.length > 0) {
-      const seederPath = path.join(projectRoot, 'database/seeders/DatabaseSeeder.php')
       const seederNames = modelsWithSeeder.map(m => `${m.name}Seeder::class`)
-
-      if (fs.existsSync(seederPath)) {
-        let content = fs.readFileSync(seederPath, 'utf-8')
-        for (const seeder of seederNames) {
-          if (!content.includes(seeder)) {
-            if (content.includes('$this->call([')) {
-              content = content.replace('$this->call([', `$this->call([\n            ${seeder},`)
-            } else {
-              result.warnings.push(`Impossible d'injecter automatiquement ${seeder} dans DatabaseSeeder.php. Ajoutez-le manuellement.`)
-            }
-          }
-        }
-        result.files.push({ outputPath: 'database/seeders/DatabaseSeeder.php', content })
-      } else {
-        const seederCtx = { seeders: seederNames, laravelOptions: config.laravel }
-        result.files.push({
-          outputPath: 'database/seeders/DatabaseSeeder.php',
-          content: this.render('overlays/seeder/DatabaseSeeder.php.hbs', seederCtx),
-        })
-      }
+      const seederCtx   = { seeders: seederNames, laravelOptions: config.laravel }
+      result.files.push({
+        outputPath: 'database/seeders/DatabaseSeeder.php',
+        content: this.buildDatabaseSeeder(existingSeeder, seederNames, seederCtx),
+      })
     }
 
-    // ── Swagger config + composer.json ──────────────────────────────────────────
-    const hasAnySwagger = config.models.some(m => m.generate.swagger)
-    if (hasAnySwagger) {
-      result.files.push({
-        outputPath: 'config/l5-swagger.php',
-        content: this.generateSwaggerConfig(config),
-      })
-      result.files.push({
-        outputPath: 'composer.json',
-        content: this.generateComposerJson(config),
-      })
-      result.warnings.push(
-        'Swagger enabled: run "php artisan l5-swagger:generate" after "composer install" to generate the OpenAPI spec at /api/documentation.'
-      )
-    }
-
-    // ── ObserverServiceProvider ─────────────────────────────────────────────────
+    // ── Phase 6 — Cross-model providers ───────────────────────────────────────
     const modelsWithObserver = config.models.filter(m => m.generate.observer)
     if (modelsWithObserver.length > 0) {
       const observerCtx = {
-        observerModels: modelsWithObserver.map(m => ({
-          name:    m.name,
-          varName: modelToVarName(m.name),
-        })),
+        observerModels: modelsWithObserver.map(m => ({ name: m.name, varName: modelToVarName(m.name) })),
         laravelOptions: config.laravel,
       }
-      result.files.push({
-        outputPath: 'app/Providers/ObserverServiceProvider.php',
-        content: this.render('overlays/observer/ObserverServiceProvider.php.hbs', observerCtx),
-      })
+      result.files.push({ outputPath: 'app/Providers/ObserverServiceProvider.php', content: this.render('overlays/observer/ObserverServiceProvider.php.hbs', observerCtx) })
       const laravelVer = parseInt(config.laravel?.laravel_version ?? '11')
       const regLocation = laravelVer >= 11
         ? 'bootstrap/providers.php — add \\App\\Providers\\ObserverServiceProvider::class to the array'
@@ -248,7 +151,7 @@ export class LaravelGenerator {
       result.warnings.push(`ObserverServiceProvider generated. Register it in ${regLocation}.`)
     }
 
-    // ── Laravel Plugins (Notifications, Socialite, Spatie, Horizon, 2FA) ────────
+    // ── Phase 7 — Plugins (Notifications, Socialite, Spatie, Horizon, 2FA) ────
     generateLaravelPlugins(config, result.files, result.warnings)
 
     return result
@@ -501,25 +404,87 @@ export class LaravelGenerator {
     ]
   }
 
-  private generateAuthRoutesFile(auth: string): GeneratedFile[] {
-    const guard = auth === 'passport' ? 'api' : 'sanctum'
-    return [{
-      outputPath: 'routes/auth.php',
-      content: `<?php
+  // ── Route file builder ──────────────────────────────────────────────────────
+  // Single entry-point for generating or patching routes/api.php.
+  // • existing !== null → patch (inject missing routes / use statements)
+  // • existing === null → render fresh from template, then inject auth routes
+  // Auth injection runs in both paths so the logic is never duplicated.
+  private buildApiPhp(
+    existing: string | null,
+    routeModels: Array<{ name: string; routeName: string; generate: Record<string, boolean> }>,
+    laravelAuth: string,
+  ): string {
+    const authGuard  = laravelAuth === 'passport' ? 'api' : 'sanctum'
+    const authUse    = `use App\\Http\\Controllers\\Auth\\AuthController;`
+    const authRoutes = [
+      `Route::prefix('auth')->group(function () {`,
+      `    Route::post('register', [AuthController::class, 'register']);`,
+      `    Route::post('login',    [AuthController::class, 'login']);`,
+      `    Route::middleware('auth:${authGuard}')->group(function () {`,
+      `        Route::post('logout', [AuthController::class, 'logout']);`,
+      `        Route::get('me',      [AuthController::class, 'me']);`,
+      `    });`,
+      `});`,
+    ].join('\n')
 
-use App\\Http\\Controllers\\Auth\\AuthController;
-use Illuminate\\Support\\Facades\\Route;
+    const injectUse = (content: string, useLine: string): string => {
+      if (content.includes(useLine)) return content
+      const lines = content.split('\n')
+      const lastUseIdx = lines.reduce((last, line, i) => line.trimStart().startsWith('use ') ? i : last, -1)
+      if (lastUseIdx >= 0) {
+        lines.splice(lastUseIdx + 1, 0, useLine)
+        return lines.join('\n')
+      }
+      return content.replace('<?php', `<?php\n\n${useLine}`)
+    }
 
-Route::prefix('auth')->group(function () {
-    Route::post('register', [AuthController::class, 'register']);
-    Route::post('login',    [AuthController::class, 'login']);
-    Route::middleware('auth:${guard}')->group(function () {
-        Route::post('logout', [AuthController::class, 'logout']);
-        Route::get('me',      [AuthController::class, 'me']);
-    });
-});
-`,
-    }]
+    const injectRoute = (content: string, route: string): string => {
+      if (content.includes(route)) return content
+      const marker = '// @stack-init-routes-end'
+      return content.includes(marker)
+        ? content.replace(marker, `${route}\n${marker}`)
+        : content.trimEnd() + `\n${route}\n`
+    }
+
+    let content = existing ?? this.render('overlays/routes/api.php.hbs', { models: routeModels })
+
+    // Inject model controller routes (only when patching an existing file;
+    // the fresh template already contains them from the Handlebars loop)
+    if (existing) {
+      for (const model of routeModels) {
+        content = injectUse(content, `use App\\Http\\Controllers\\Api\\${model.name}Controller;`)
+        content = injectRoute(content, `Route::apiResource('${model.routeName}', ${model.name}Controller::class);`)
+      }
+    }
+
+    // Inject auth routes into both fresh and existing files
+    if (laravelAuth !== 'none') {
+      content = injectUse(content, authUse)
+      if (!content.includes('AuthController::class')) {
+        content = injectRoute(content, authRoutes)
+      }
+    }
+
+    return content
+  }
+
+  // ── DatabaseSeeder builder ───────────────────────────────────────────────────
+  private buildDatabaseSeeder(
+    existing: string | null,
+    seederNames: string[],
+    ctx: Record<string, unknown>,
+  ): string {
+    if (existing?.includes('$this->call([')) {
+      let content = existing
+      for (const seeder of seederNames) {
+        if (!content.includes(seeder)) {
+          content = content.replace('$this->call([', `$this->call([\n            ${seeder},`)
+        }
+      }
+      return content
+    }
+    // Fresh Laravel scaffold (no $this->call block) or no existing file → generate from template
+    return this.render('overlays/seeder/DatabaseSeeder.php.hbs', ctx)
   }
 
   private generateSwaggerConfig(config: ProjectConfig): string {

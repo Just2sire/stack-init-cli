@@ -721,9 +721,15 @@ ${fieldInputs}
         : f.type === 'dateTime' || f.type === 'timestamp' ? 'datetime-local'
         : 'text'
       const nullable = ('nullable' in f && (f as any).nullable) as boolean | undefined
+      const inputEl =
+        f.type === 'text' || f.type === 'mediumText' || f.type === 'longText'
+          ? `          <textarea name="${f.name}" required={${!nullable}} defaultValue={String(item?.${f.name} ?? '')} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6, minHeight: 100 }} />`
+          : f.type === 'enum' && 'values' in f && (f as any).values?.length
+          ? `          <select name="${f.name}" required={${!nullable}} defaultValue={String(item?.${f.name} ?? '')} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6 }}>\n            ${(f as any).values.map((v: string) => `<option value="${v}">${v}</option>`).join('\n            ')}\n          </select>`
+          : `          <input type="${inputType}" name="${f.name}" required={${!nullable}} defaultValue={String(item?.${f.name} ?? '')} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6 }} />`
       return `        <div style={{ marginBottom: 16 }}>
           <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: 14 }}>${f.name}</label>
-          <input type="${inputType}" name="${f.name}" required={${!nullable}} defaultValue={String(item?.${f.name} ?? '')} style={{ width: '100%', padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 6 }} />
+${inputEl}
         </div>`
     }).join('\n')
 
@@ -767,34 +773,83 @@ ${inputRows}
   }
 
   private generateListPage(model: Model, slug: string, _uiLib: string): string {
-    const firstField = (model.fields as NamedField[])[0]?.name ?? 'id'
-    return `import Link from 'next/link';
-import type { ${model.name} } from '@/types/${model.name}';
+    const displayFields = (model.fields as NamedField[]).filter((f: any) => f.type !== 'foreignId').slice(0, 6)
+    const thCells = displayFields.map(f => `        <th style={{ padding: '10px 14px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>${f.name}</th>`).join('\n')
+    const tdCells = displayFields.map(f => `              <td style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 14 }}>{String(item.${f.name} ?? '')}</td>`).join('\n')
+    return `'use client';
+import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 
-async function getData(): Promise<${model.name}[]> {
-  const res = await fetch(\`\${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/${slug}\`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Failed to fetch ${model.name}s');
-  return res.json();
-}
+export default function ${model.name}ListPage() {
+  const [items, setItems] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-export default async function ${model.name}ListPage() {
-  const items = await getData();
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(\`\${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/${slug}\`);
+      if (!res.ok) throw new Error(\`Server returned \${res.status}\`);
+      setItems(await res.json());
+    } catch (e: any) {
+      setError(e.message ?? 'Failed to load ${model.name}s');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleDelete(id: number | string) {
+    if (!confirm('Delete this ${model.name}?')) return;
+    await fetch(\`\${process.env.NEXT_PUBLIC_APP_URL ?? ''}/api/${slug}/\${id}\`, { method: 'DELETE' });
+    load();
+  }
+
   return (
     <main style={{ padding: '2rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1>${model.name}s</h1>
-        <Link href="/${slug}/new" style={{ padding: '8px 16px', background: '#000', color: '#fff', borderRadius: 6, textDecoration: 'none' }}>
+        <Link href="/${slug}/new" style={{ padding: '8px 16px', background: '#000', color: '#fff', borderRadius: 6, textDecoration: 'none', fontSize: 14 }}>
           + New
         </Link>
       </div>
-      <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.map((item) => (
-          <li key={item.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>#{item.id} — {String(item.${firstField})}</span>
-            <Link href={\`/${slug}/\${item.id}\`} style={{ fontSize: 14, color: '#6366f1' }}>View →</Link>
-          </li>
-        ))}
-      </ul>
+      {error && (
+        <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', borderRadius: 8, padding: '12px 16px', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{error}</span>
+          <button onClick={load} style={{ marginLeft: 16, padding: '4px 12px', background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>Retry</button>
+        </div>
+      )}
+      {loading && <p style={{ color: '#6b7280' }}>Loading...</p>}
+      {!loading && !error && items.length === 0 && (
+        <p style={{ color: '#6b7280' }}>No ${model.name}s yet.</p>
+      )}
+      {!loading && items.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: '#f9fafb' }}>
+                <th style={{ padding: '10px 14px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>ID</th>
+${thCells}
+                <th style={{ padding: '10px 14px', textAlign: 'left', borderBottom: '2px solid #e5e7eb', fontWeight: 600, fontSize: 13 }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6', fontSize: 14, color: '#6b7280' }}>{item.id}</td>
+${tdCells}
+                  <td style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
+                    <Link href={\`/${slug}/\${item.id}/edit\`} style={{ marginRight: 12, fontSize: 13, color: '#6366f1', textDecoration: 'none' }}>Edit</Link>
+                    <button onClick={() => handleDelete(item.id)} style={{ fontSize: 13, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </main>
   );
 }

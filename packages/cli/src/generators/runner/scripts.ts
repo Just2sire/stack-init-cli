@@ -19,6 +19,11 @@ export function generateSetupSh(config: ProjectConfig): string {
   const stack  = config.stack as string
   const mixed  = isMixedStack(config.stack)
   const bDir   = backendDir(stack, mixed)
+  const laravelAuth = config.laravel?.auth ?? 'sanctum'
+  const laravelVer  = parseInt(config.laravel?.laravel_version ?? '12')
+  const needsInstallApi = isLaravelStack(stack)
+    && (laravelAuth === 'sanctum' || laravelAuth === 'passport')
+    && laravelVer >= 11
   const lines: string[] = [
     '#!/usr/bin/env bash',
     'set -e',
@@ -31,6 +36,7 @@ export function generateSetupSh(config: ProjectConfig): string {
     lines.push('composer update --no-interaction')
     lines.push('cp .env.example .env')
     lines.push('php artisan key:generate')
+    if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
     lines.push('php artisan migrate --force')
     lines.push('php artisan db:seed')
     lines.push('')
@@ -66,6 +72,11 @@ export function generateSetupPs1(config: ProjectConfig): string {
   const stack  = config.stack as string
   const mixed  = isMixedStack(config.stack)
   const bDir   = backendDir(stack, mixed)
+  const laravelAuth = config.laravel?.auth ?? 'sanctum'
+  const laravelVer  = parseInt(config.laravel?.laravel_version ?? '12')
+  const needsInstallApi = isLaravelStack(stack)
+    && (laravelAuth === 'sanctum' || laravelAuth === 'passport')
+    && laravelVer >= 11
   const lines: string[] = [
     'Set-StrictMode -Version Latest',
     '$ErrorActionPreference = "Stop"',
@@ -78,6 +89,7 @@ export function generateSetupPs1(config: ProjectConfig): string {
     lines.push('composer update --no-interaction')
     lines.push('Copy-Item .env.example .env')
     lines.push('php artisan key:generate')
+    if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
     lines.push('php artisan migrate --force')
     lines.push('php artisan db:seed')
     lines.push('')
@@ -113,6 +125,11 @@ export function generateSetupBat(config: ProjectConfig): string {
   const stack  = config.stack as string
   const mixed  = isMixedStack(config.stack)
   const bDir   = backendDir(stack, mixed)
+  const laravelAuth = config.laravel?.auth ?? 'sanctum'
+  const laravelVer  = parseInt(config.laravel?.laravel_version ?? '12')
+  const needsInstallApi = isLaravelStack(stack)
+    && (laravelAuth === 'sanctum' || laravelAuth === 'passport')
+    && laravelVer >= 11
   const lines: string[] = [
     '@echo off',
     `echo Configuration de ${config.name}...`,
@@ -124,6 +141,7 @@ export function generateSetupBat(config: ProjectConfig): string {
     lines.push('composer update --no-interaction')
     lines.push('copy .env.example .env')
     lines.push('php artisan key:generate')
+    if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
     lines.push('php artisan migrate --force')
     lines.push('php artisan db:seed')
     lines.push('')

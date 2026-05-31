@@ -1,6 +1,7 @@
 import type { Model, ProjectConfig } from '@stack-init/schema'
 import { snakeCase, pluralize, modelToTableName } from '../../utils/naming'
 import { type GeneratedFile } from '../../utils/fs'
+import { sortModelsByDependency } from '../../utils/model-sort'
 
 export interface GeneratorResult {
   files: GeneratedFile[]
@@ -120,9 +121,10 @@ export class FastAPIGenerator {
     }
 
     // Per-model files
+    const sortedModels = sortModelsByDependency(config.models)
     const flatModelParts: string[] = []
 
-    for (const model of config.models) {
+    for (const model of sortedModels) {
       const gen      = model.generate ?? {}
       const mSnake   = modelToSnake(model.name)
       const canRoute = gen.routes !== false && gen.controller !== false
@@ -153,7 +155,7 @@ export class FastAPIGenerator {
 
     if (architecture === 'flat') {
       result.files.push({ outputPath: 'app/models.py', content: flatModelParts.join('\n') })
-      const routable = config.models.filter(m => m.generate?.routes !== false && m.generate?.controller !== false)
+      const routable = sortedModels.filter(m => m.generate?.routes !== false && m.generate?.controller !== false)
       if (routable.length > 0)
         result.files.push({ outputPath: 'app/routers.py', content: generateFlatRouters(routable, orm, asyncMode, useBgTasks, useRateLimiting) })
     }

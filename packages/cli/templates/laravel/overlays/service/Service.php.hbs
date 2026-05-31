@@ -6,14 +6,14 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Models\{{name}};
+use App\Models\\{{name}};
 {{#if generate.repository}}
-use App\Repositories\{{name}}Repository;
+use App\Repositories\\{{name}}Repository;
 {{/if}}
 {{#if generate.actions}}
-use App\Actions\{{name}}\Create{{name}}Action;
-use App\Actions\{{name}}\Update{{name}}Action;
-use App\Actions\{{name}}\Delete{{name}}Action;
+use App\Actions\\{{name}}\Create{{name}}Action;
+use App\Actions\\{{name}}\Update{{name}}Action;
+use App\Actions\\{{name}}\Delete{{name}}Action;
 {{/if}}
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;

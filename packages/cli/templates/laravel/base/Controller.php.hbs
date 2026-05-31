@@ -7,19 +7,19 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\{{name}};
+use App\Models\\{{name}};
 {{#if generate.resource}}
-use App\Http\Resources\{{name}}Resource;
+use App\Http\Resources\\{{name}}Resource;
 {{/if}}
 {{#if generate.collection}}
-use App\Http\Resources\{{name}}Collection;
+use App\Http\Resources\\{{name}}Collection;
 {{/if}}
 {{#if generate.request}}
 use App\Http\Requests\Store{{name}}Request;
 use App\Http\Requests\Update{{name}}Request;
 {{/if}}
 {{#if generate.service}}
-use App\Services\{{name}}Service;
+use App\Services\\{{name}}Service;
 {{/if}}
 use Illuminate\Http\{JsonResponse, Request};
 

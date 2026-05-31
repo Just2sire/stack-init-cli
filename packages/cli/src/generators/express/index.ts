@@ -6,6 +6,7 @@ import { configureHandlebars } from './handlebars'
 import { modelToTableName, modelToRouteName, modelToVarName, pluralize, pascalCase } from '../../utils/naming'
 import { type GeneratedFile } from '../../utils/fs'
 import { resolveTemplatesDir } from '../../utils/template-path'
+import { sortModelsByDependency } from '../../utils/model-sort'
 
 const TEMPLATES_DIR = resolveTemplatesDir('express')
 
@@ -35,6 +36,8 @@ export class ExpressGenerator {
 
     const db_engine = config.express.db_engine ?? 'postgresql'
 
+    const sortedModels = sortModelsByDependency(config.models)
+
     // Generate Prisma Schema
     if (orm === 'prisma') {
       result.files.push(this.generatePrismaSchema(config))
@@ -49,7 +52,7 @@ export class ExpressGenerator {
     }
 
     if (orm === 'drizzle') {
-      result.files.push(...this.generateDrizzleSetup(config.models, db_engine))
+      result.files.push(...this.generateDrizzleSetup(sortedModels, db_engine))
     }
 
     if (orm === 'knex') {
@@ -57,7 +60,7 @@ export class ExpressGenerator {
     }
 
     // Generate layers for each model
-    for (const model of config.models) {
+    for (const model of sortedModels) {
       const modelResult = this.generateModelLayers(model, config)
       result.files.push(...modelResult.files)
       result.warnings.push(...modelResult.warnings)

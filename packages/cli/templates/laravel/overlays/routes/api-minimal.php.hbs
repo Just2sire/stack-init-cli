@@ -6,15 +6,15 @@ use Illuminate\Support\Facades\Route;
 
 // {{name}} — minimal inline routes
 Route::get('{{routeName}}', fn(Request $request) =>
-    \App\Models\{{name}}::query()->paginate($request->integer('per_page', 15))
+    \App\Models\\{{name}}::query()->paginate($request->integer('per_page', 15))
 );
 
 Route::get('{{routeName}}/{id}', fn(int|string $id) =>
-    \App\Models\{{name}}::findOrFail($id)
+    \App\Models\\{{name}}::findOrFail($id)
 );
 
 Route::post('{{routeName}}', function (Request $request) {
-    $item = \App\Models\{{name}}::create($request->validate([
+    $item = \App\Models\\{{name}}::create($request->validate([
 {{#each validationRules}}
         '{{name}}' => {{{rules}}},
 {{/each}}
@@ -23,7 +23,7 @@ Route::post('{{routeName}}', function (Request $request) {
 });
 
 Route::put('{{routeName}}/{id}', function (Request $request, int|string $id) {
-    $item = \App\Models\{{name}}::findOrFail($id);
+    $item = \App\Models\\{{name}}::findOrFail($id);
     $item->update($request->validate([
 {{#each validationRules}}
         '{{name}}' => {{{rulesUpdate}}},
@@ -33,7 +33,7 @@ Route::put('{{routeName}}/{id}', function (Request $request, int|string $id) {
 });
 
 Route::delete('{{routeName}}/{id}', function (int|string $id) {
-    \App\Models\{{name}}::findOrFail($id)->delete();
+    \App\Models\\{{name}}::findOrFail($id)->delete();
     return response()->json(null, 204);
 });
 {{/each}}

@@ -8,8 +8,8 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 {{#each observerModels}}
-use App\Models\{{name}};
-use App\Observers\{{name}}Observer;
+use App\Models\\{{name}};
+use App\Observers\\{{name}}Observer;
 {{/each}}
 
 class ObserverServiceProvider extends ServiceProvider

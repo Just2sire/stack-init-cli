@@ -196,6 +196,32 @@ export function buildGettingStartedMd(config: ProjectConfig): string {
   }
   lines.push('')
 
+  if (stack.includes('laravel') && config.models.length > 0) {
+    lines.push('## Regenerate individual files')
+    lines.push('')
+    lines.push('Artisan equivalents for each scaffolded layer (run inside the project after `composer install`):')
+    lines.push('')
+    lines.push('```bash')
+    for (const model of config.models) {
+      const name = model.name
+      const table = name.toLowerCase() + 's'
+      lines.push(`# ${name}`)
+      lines.push(`php artisan make:model ${name} -m`)
+      if (model.generate.controller !== false) lines.push(`php artisan make:controller Api/${name}Controller --api --model=${name}`)
+      if (model.generate.request    !== false) lines.push(`php artisan make:request Store${name}Request`)
+      if (model.generate.request    !== false) lines.push(`php artisan make:request Update${name}Request`)
+      if (model.generate.resource   !== false) lines.push(`php artisan make:resource ${name}Resource`)
+      if (model.generate.collection !== false) lines.push(`php artisan make:resource ${name}Collection --collection`)
+      if (model.generate.factory    !== false) lines.push(`php artisan make:factory ${name}Factory --model=${name}`)
+      if (model.generate.seeder     !== false) lines.push(`php artisan make:seeder ${name}Seeder`)
+      if (model.generate.policy     !== false) lines.push(`php artisan make:policy ${name}Policy --model=${name}`)
+      if (model.generate.observer   !== false) lines.push(`php artisan make:observer ${name}Observer --model=${name}`)
+      lines.push('')
+    }
+    lines.push('```')
+    lines.push('')
+  }
+
   lines.push('---')
   lines.push('')
   lines.push(`*Généré par [stack-init](https://github.com/your-org/stack-init)*`)
