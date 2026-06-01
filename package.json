@@ -1,6 +1,21 @@
 {
   "name": "stack-init-cli",
   "private": true,
+  "description": "Monorepo for stack-init CLI and schema packages — scaffold full-stack projects from a single YAML config",
+  "author": "Kossi Désiré Komla <kossidesirekomla@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Just2sire/stack-init-cli.git"
+  },
+  "homepage": "https://github.com/Just2sire/stack-init-cli#readme",
+  "bugs": {
+    "url": "https://github.com/Just2sire/stack-init-cli/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  },
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm -r dev",

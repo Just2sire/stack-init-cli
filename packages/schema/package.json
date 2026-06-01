@@ -1,8 +1,43 @@
 {
   "name": "@stack-init/schema",
   "version": "0.1.0",
+  "description": "Zod schemas and TypeScript types shared between stack-init CLI and wizard UI",
+  "author": "Kossi Désiré Komla <kossidesirekomla@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Just2sire/stack-init-cli.git",
+    "directory": "packages/schema"
+  },
+  "homepage": "https://github.com/Just2sire/stack-init-cli#readme",
+  "bugs": {
+    "url": "https://github.com/Just2sire/stack-init-cli/issues"
+  },
+  "keywords": [
+    "scaffold",
+    "schema",
+    "zod",
+    "typescript",
+    "laravel",
+    "express",
+    "nestjs",
+    "fastapi",
+    "code-generator",
+    "yaml",
+    "validation"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
+  },
   "files": [
     "dist"
   ],

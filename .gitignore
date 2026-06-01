@@ -59,3 +59,15 @@ coverage/
 # Ignore backups
 *.bak
 *.backup
+
+# Internal tooling
+.superpowers/
+.claude/
+
+# Generated examples and test outputs
+stack/
+test_project/
+
+# Archives
+*.tar.gz
+*.zip

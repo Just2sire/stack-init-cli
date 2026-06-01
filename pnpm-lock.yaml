@@ -26,9 +26,6 @@ importers:
 
   packages/cli:
     dependencies:
-      '@stack-init/schema':
-        specifier: workspace:*
-        version: link:../schema
       adm-zip:
         specifier: ^0.5.17
         version: 0.5.17
