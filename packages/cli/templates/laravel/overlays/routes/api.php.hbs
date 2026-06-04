@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\\{{name}}Controller;
 {{/if}}
 {{/each}}
+{{#if hasAuth}}
+use App\Http\Controllers\AuthController;
+{{/if}}
 
 /*
 |--------------------------------------------------------------------------
@@ -13,9 +16,29 @@ use App\Http\Controllers\Api\\{{name}}Controller;
 |--------------------------------------------------------------------------
 */
 
+{{#if hasAuth}}
+Route::prefix('{{apiVersion}}')->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login']);
+});
+
+Route::middleware('auth:sanctum')->prefix('{{apiVersion}}')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout']);
+
 {{#each models}}
 {{#if generate.routes}}
-Route::apiResource('{{routeName}}', {{name}}Controller::class);
+    Route::apiResource('{{routeName}}', {{name}}Controller::class);
 {{/if}}
 {{/each}}
-// @stack-init-routes-end
+    // @stack-init-routes-end
+});
+{{else}}
+Route::prefix('{{apiVersion}}')->group(function () {
+{{#each models}}
+{{#if generate.routes}}
+    Route::apiResource('{{routeName}}', {{name}}Controller::class);
+{{/if}}
+{{/each}}
+    // @stack-init-routes-end
+});
+{{/if}}

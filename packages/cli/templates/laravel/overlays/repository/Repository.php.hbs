@@ -7,39 +7,31 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Models\\{{name}};
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\Collection;
+use App\Repositories\Contracts\\{{name}}RepositoryInterface;
+use Illuminate\Database\Eloquent\Builder;
 
-class {{name}}Repository
+/**
+ * Repository pour {{name}}.
+ *
+ * Le CRUD générique (paginate, all, find, findOrFail, create, update, delete)
+ * est hérité de BaseRepository. Surcharger uniquement ce qui change.
+ */
+class {{name}}Repository extends BaseRepository implements {{name}}RepositoryInterface
 {
-    public function all(): Collection
+    public function __construct({{name}} $model)
     {
-        return {{name}}::all();
+        parent::__construct($model);
     }
 
-    public function paginate(int $perPage = 15): LengthAwarePaginator
+    /**
+     * Filtres spécifiques à {{name}}.
+     *
+     * TODO: Adapter les filtres aux champs réels du modèle.
+     */
+    protected function applyFilters(Builder $query, array $filters): Builder
     {
-        return {{name}}::query()->paginate($perPage);
-    }
-
-    public function find(int|string $id): ?{{name}}
-    {
-        return {{name}}::find($id);
-    }
-
-    public function create(array $data): {{name}}
-    {
-        return {{name}}::create($data);
-    }
-
-    public function update({{name}} ${{varName}}, array $data): {{name}}
-    {
-        ${{varName}}->update($data);
-        return ${{varName}}->fresh();
-    }
-
-    public function delete({{name}} ${{varName}}): bool
-    {
-        return (bool) ${{varName}}->delete();
+        return $query
+            ->when($filters['search'] ?? null, fn (Builder $q, string $v) => $q->where('name', 'like', "%{$v}%"));
+        // ->when($filters['status'] ?? null, fn (Builder $q, string $v) => $q->where('status', $v))
     }
 }

@@ -1,0 +1,50 @@
+name: my-shop
+stack: laravel
+
+models:
+  - name: Product
+    fields:
+      - { name: name,        type: string }
+      - { name: description, type: text,    nullable: true }
+      - { name: price,       type: decimal }
+      - { name: stock,       type: integer }
+    migration:
+      timestamps:  true
+      softDeletes: true
+    generate:
+      migration:  true
+      resource:   true
+      request:    true
+      factory:    true
+      tests:      true
+      service:    true
+      repository: true
+      routes:     true
+
+  - name: Order
+    fields:
+      - { name: total,      type: decimal }
+      - { name: status,     type: enum,    values: [pending, paid, cancelled] }
+      - { name: notes,      type: text,    nullable: true }
+    migration:
+      timestamps:  true
+      softDeletes: true
+    generate:
+      migration:  true
+      resource:   true
+      request:    true
+      factory:    true
+      tests:      true
+      service:    true
+      repository: true
+      routes:     true
+
+laravel:
+  pattern:          api-only
+  auth:             sanctum
+  runner:           makefile
+  db_engine:        mysql
+  php_version:      "8.2"
+  laravel_version:  "11"
+  use_api_response: true
+  api_version:      v1

@@ -4,56 +4,99 @@
 declare(strict_types=1);
 {{/if}}
 
+namespace Tests\Feature;
+
 use App\Models\\{{name}};
-{{#if hasUserRelation}}
+{{#if hasAuth}}
+{{#unless isUserModel}}
 use App\Models\User;
+{{/unless}}
 {{/if}}
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
-uses(RefreshDatabase::class);
+class {{name}}Test extends TestCase
+{
+    use RefreshDatabase;
 
-test('can list {{namePlural}}', function () {
-    {{name}}::factory()->count(3)->create();
-    $this->getJson('/api/{{routeName}}')
-         ->assertOk()
-         ->assertJsonStructure(['data', 'meta']);
-});
+{{#if hasAuth}}
+    private User $user;
 
-test('can show a {{varName}}', function () {
-    ${{varName}} = {{name}}::factory()->create();
-    $this->getJson("/api/{{routeName}}/{${{varName}}->id}")
-         ->assertOk()
-         ->assertJsonPath('data.id', ${{varName}}->id);
-});
+    protected function setUp(): void
+    {
+        parent::setUp();
 
-test('can create a {{varName}}', function () {
-    $payload = {{name}}::factory()->make()->toArray();
-    $this->postJson('/api/{{routeName}}', $payload)
-         ->assertCreated();
-    $this->assertDatabaseHas('{{tableName}}', $payload);
-});
+        $this->user = User::factory()->create();
+        $this->actingAs($this->user);
+    }
 
-test('store validates required fields', function () {
-    $this->postJson('/api/{{routeName}}', [])
-         ->assertUnprocessable()
-         ->assertJsonStructure(['message', 'errors']);
-});
-
-test('can update a {{varName}}', function () {
-    ${{varName}} = {{name}}::factory()->create();
-    $payload     = {{name}}::factory()->make()->toArray();
-    $this->putJson("/api/{{routeName}}/{${{varName}}->id}", $payload)
-         ->assertOk();
-    $this->assertDatabaseHas('{{tableName}}', ['id' => ${{varName}}->id, ...$payload]);
-});
-
-test('can delete a {{varName}}', function () {
-    ${{varName}} = {{name}}::factory()->create();
-    $this->deleteJson("/api/{{routeName}}/{${{varName}}->id}")
-         ->assertNoContent();
-{{#if generate.softDelete}}
-    $this->assertSoftDeleted('{{tableName}}', ['id' => ${{varName}}->id]);
-{{else}}
-    $this->assertDatabaseMissing('{{tableName}}', ['id' => ${{varName}}->id]);
 {{/if}}
-});
+    public function test_liste_les_{{routeName}}(): void
+    {
+        {{name}}::factory()->count(3)->create();
+
+        $this->getJson('/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}')
+            ->assertOk()
+            ->assertJsonStructure(['success', 'data', 'meta']);
+    }
+
+    public function test_affiche_un_{{varName}}(): void
+    {
+        ${{varName}} = {{name}}::factory()->create();
+
+        $this->getJson("/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}/{${{varName}}->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', ${{varName}}->id);
+    }
+
+    public function test_cree_un_{{varName}}(): void
+    {
+        $payload = {{name}}::factory()->make()->toArray();
+
+        $this->postJson('/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}', $payload)
+            ->assertCreated()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('{{tableName}}', $payload);
+    }
+
+    public function test_refuse_la_creation_sans_donnees_requises(): void
+    {
+        $this->postJson('/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}', [])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_met_a_jour_un_{{varName}}(): void
+    {
+        ${{varName}} = {{name}}::factory()->create();
+        $payload     = {{name}}::factory()->make()->toArray();
+
+        $this->putJson("/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}/{${{varName}}->id}", $payload)
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('{{tableName}}', ['id' => ${{varName}}->id, ...$payload]);
+    }
+
+    public function test_supprime_un_{{varName}}(): void
+    {
+        ${{varName}} = {{name}}::factory()->create();
+
+        $this->deleteJson("/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}/{${{varName}}->id}")
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+{{#if generate.softDelete}}
+        $this->assertSoftDeleted('{{tableName}}', ['id' => ${{varName}}->id]);
+{{else}}
+        $this->assertDatabaseMissing('{{tableName}}', ['id' => ${{varName}}->id]);
+{{/if}}
+    }
+
+    public function test_retourne_404_pour_un_{{varName}}_inexistant(): void
+    {
+        $this->getJson('/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}/id-inexistant')
+            ->assertNotFound();
+    }
+}

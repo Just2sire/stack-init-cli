@@ -1,0 +1,215 @@
+<?php
+{{#if laravelOptions.use_strict_types}}
+
+declare(strict_types=1);
+{{/if}}
+
+namespace App\Traits;
+
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Http\Resources\Json\ResourceCollection;
+use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
+
+trait ApiResponse
+{
+    // =========================================================================
+    // Succès
+    // =========================================================================
+
+    protected function success(
+        mixed $data = null,
+        string $message = 'Opération réussie.',
+        int $status = 200,
+        array $meta = []
+    ): JsonResponse {
+        $payload = ['success' => true, 'message' => $message];
+
+        if ($data !== null) {
+            $payload['data'] = $data instanceof JsonResource || $data instanceof ResourceCollection
+                ? $data->resolve()
+                : $data;
+        }
+
+        if (! empty($meta)) {
+            $payload['meta'] = $meta;
+        }
+
+        return response()->json($payload, $status);
+    }
+
+    protected function created(mixed $data = null, string $message = 'Ressource créée avec succès.'): JsonResponse
+    {
+        return $this->success($data, $message, 201);
+    }
+
+    protected function updated(mixed $data = null, string $message = 'Ressource mise à jour avec succès.'): JsonResponse
+    {
+        return $this->success($data, $message);
+    }
+
+    protected function deleted(string $message = 'Ressource supprimée avec succès.'): JsonResponse
+    {
+        return $this->success(null, $message);
+    }
+
+    protected function accepted(string $message = 'Requête acceptée, traitement en cours.'): JsonResponse
+    {
+        return $this->success(null, $message, 202);
+    }
+
+    protected function noContent(): JsonResponse
+    {
+        return response()->json(null, 204);
+    }
+
+    protected function collection(Collection|array $items, string $message = 'Données récupérées avec succès.'): JsonResponse
+    {
+        return $this->success($items, $message);
+    }
+
+    protected function paginated(
+        mixed $paginator,
+        ?string $resourceClass = null,
+        string $message = 'Données récupérées avec succès.'
+    ): JsonResponse {
+        $items = $resourceClass
+            ? $resourceClass::collection($paginator->items())
+            : $paginator->items();
+
+        $meta = [
+            'per_page' => $paginator->perPage(),
+            'from'     => method_exists($paginator, 'firstItem') ? $paginator->firstItem() : null,
+            'to'       => method_exists($paginator, 'lastItem') ? $paginator->lastItem() : null,
+            'has_more' => $paginator->hasMorePages(),
+        ];
+
+        if (method_exists($paginator, 'total')) {
+            $meta['total'] = $paginator->total();
+        }
+        if (method_exists($paginator, 'lastPage')) {
+            $meta['last_page'] = $paginator->lastPage();
+        }
+        if (method_exists($paginator, 'currentPage')) {
+            $meta['current_page'] = $paginator->currentPage();
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'data'    => $items,
+            'meta'    => ['pagination' => $meta],
+        ]);
+    }
+
+    protected function successOr(
+        bool $condition,
+        string $successMessage = 'Opération réussie.',
+        string $errorMessage = 'Opération échouée.',
+        mixed $data = null
+    ): JsonResponse {
+        return $condition
+            ? $this->success($data, $successMessage)
+            : $this->error($errorMessage);
+    }
+
+    // =========================================================================
+    // Erreurs
+    // =========================================================================
+
+    protected function error(
+        string $message = 'Une erreur est survenue.',
+        int $status = 400,
+        ?array $errors = null,
+        mixed $debug = null
+    ): JsonResponse {
+        $payload = ['success' => false, 'message' => $message];
+
+        if ($errors !== null) {
+            $payload['errors'] = $errors;
+        }
+
+        if ($debug !== null && config('app.debug')) {
+            $payload['debug'] = $debug;
+        }
+
+        return response()->json($payload, $status);
+    }
+
+    protected function validationError(array $errors = [], string $message = 'Les données fournies sont invalides.'): JsonResponse
+    {
+        return response()->json(['success' => false, 'message' => $message, 'errors' => $errors], 422);
+    }
+
+    protected function notFound(string $message = 'Ressource introuvable.'): JsonResponse
+    {
+        return $this->error($message, 404);
+    }
+
+    protected function unauthorized(string $message = 'Authentification requise.'): JsonResponse
+    {
+        return $this->error($message, 401);
+    }
+
+    protected function forbidden(string $message = "Vous n'êtes pas autorisé à effectuer cette action."): JsonResponse
+    {
+        return $this->error($message, 403);
+    }
+
+    protected function conflict(string $message = 'Un conflit est survenu avec la ressource existante.'): JsonResponse
+    {
+        return $this->error($message, 409);
+    }
+
+    protected function tooManyRequests(string $message = 'Trop de requêtes. Veuillez réessayer plus tard.'): JsonResponse
+    {
+        return $this->error($message, 429);
+    }
+
+    protected function serverError(string $message = 'Erreur interne du serveur.', ?\Throwable $exception = null): JsonResponse
+    {
+        $debug = null;
+
+        if ($exception !== null && config('app.debug')) {
+            $debug = [
+                'exception' => get_class($exception),
+                'message'   => $exception->getMessage(),
+                'file'      => $exception->getFile(),
+                'line'      => $exception->getLine(),
+                'trace'     => collect($exception->getTrace())->take(5)->toArray(),
+            ];
+        }
+
+        return $this->error($message, 500, null, $debug);
+    }
+
+    // =========================================================================
+    // Utilitaire : exécution sécurisée
+    // =========================================================================
+
+    /**
+     * Exécute un callback et intercepte les exceptions Laravel courantes.
+     *
+     * - ModelNotFoundException  → 404
+     * - AuthorizationException  → 403
+     * - ValidationException     → 422
+     * - Throwable               → 500
+     */
+    protected function try(callable $callback, string $errorMessage = 'Une erreur inattendue est survenue.'): JsonResponse
+    {
+        try {
+            return $callback();
+        } catch (ModelNotFoundException) {
+            return $this->notFound();
+        } catch (AuthorizationException) {
+            return $this->forbidden();
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        } catch (\Throwable $e) {
+            return $this->serverError($errorMessage, $e);
+        }
+    }
+}

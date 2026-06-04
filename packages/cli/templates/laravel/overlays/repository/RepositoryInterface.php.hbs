@@ -1,0 +1,21 @@
+<?php
+{{#if laravelOptions.use_strict_types}}
+
+declare(strict_types=1);
+{{/if}}
+
+namespace App\Repositories\Contracts;
+
+/**
+ * Interface spécifique pour {{name}}.
+ *
+ * Hérite du CRUD générique (paginate, all, find, findOrFail, create, update, delete).
+ * Ajouter ici les méthodes propres à ce modèle.
+ */
+interface {{name}}RepositoryInterface extends BaseRepositoryInterface
+{
+    // TODO: Ajouter les méthodes spécifiques
+    // Exemples :
+    // public function findBySlug(string $slug): ?\App\Models\\{{name}};
+    // public function getActive(): \Illuminate\Database\Eloquent\Collection;
+}

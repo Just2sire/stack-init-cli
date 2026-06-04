@@ -24,6 +24,7 @@ export function generateSetupSh(config: ProjectConfig): string {
   const needsInstallApi = isLaravelStack(stack)
     && (laravelAuth === 'sanctum' || laravelAuth === 'passport')
     && laravelVer >= 11
+  const hasSwagger = isLaravelStack(stack) && config.models.some(m => m.generate?.swagger)
   const lines: string[] = [
     '#!/usr/bin/env bash',
     'set -e',
@@ -34,11 +35,19 @@ export function generateSetupSh(config: ProjectConfig): string {
   if (isLaravelStack(stack)) {
     lines.push('# Backend — Laravel')
     lines.push('composer update --no-interaction')
+    if (hasSwagger) {
+      lines.push('')
+      lines.push('# Swagger / L5-Swagger')
+      lines.push('composer require darkaonline/l5-swagger --no-interaction')
+      lines.push('php artisan vendor:publish --provider "L5Swagger\\L5SwaggerServiceProvider"')
+      lines.push('composer update --no-interaction')
+    }
     lines.push('cp .env.example .env')
     lines.push('php artisan key:generate')
     if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
     lines.push('php artisan migrate --force')
     lines.push('php artisan db:seed')
+    if (hasSwagger) lines.push('php artisan l5-swagger:generate')
     lines.push('')
   } else if (isFastAPIStack(stack)) {
     lines.push('# Backend — FastAPI')
@@ -77,6 +86,7 @@ export function generateSetupPs1(config: ProjectConfig): string {
   const needsInstallApi = isLaravelStack(stack)
     && (laravelAuth === 'sanctum' || laravelAuth === 'passport')
     && laravelVer >= 11
+  const hasSwagger = isLaravelStack(stack) && config.models.some(m => m.generate?.swagger)
   const lines: string[] = [
     'Set-StrictMode -Version Latest',
     '$ErrorActionPreference = "Stop"',
@@ -87,11 +97,19 @@ export function generateSetupPs1(config: ProjectConfig): string {
   if (isLaravelStack(stack)) {
     lines.push('# Backend — Laravel')
     lines.push('composer update --no-interaction')
+    if (hasSwagger) {
+      lines.push('')
+      lines.push('# Swagger / L5-Swagger')
+      lines.push('composer require darkaonline/l5-swagger --no-interaction')
+      lines.push('php artisan vendor:publish --provider "L5Swagger\\L5SwaggerServiceProvider"')
+      lines.push('composer update --no-interaction')
+    }
     lines.push('Copy-Item .env.example .env')
     lines.push('php artisan key:generate')
     if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
     lines.push('php artisan migrate --force')
     lines.push('php artisan db:seed')
+    if (hasSwagger) lines.push('php artisan l5-swagger:generate')
     lines.push('')
   } else if (isFastAPIStack(stack)) {
     lines.push('# Backend — FastAPI')
@@ -130,6 +148,7 @@ export function generateSetupBat(config: ProjectConfig): string {
   const needsInstallApi = isLaravelStack(stack)
     && (laravelAuth === 'sanctum' || laravelAuth === 'passport')
     && laravelVer >= 11
+  const hasSwagger = isLaravelStack(stack) && config.models.some(m => m.generate?.swagger)
   const lines: string[] = [
     '@echo off',
     `echo Configuration de ${config.name}...`,
@@ -139,11 +158,19 @@ export function generateSetupBat(config: ProjectConfig): string {
   if (isLaravelStack(stack)) {
     lines.push('REM Backend — Laravel')
     lines.push('composer update --no-interaction')
+    if (hasSwagger) {
+      lines.push('')
+      lines.push('REM Swagger / L5-Swagger')
+      lines.push('composer require darkaonline/l5-swagger --no-interaction')
+      lines.push('php artisan vendor:publish --provider "L5Swagger\\L5SwaggerServiceProvider"')
+      lines.push('composer update --no-interaction')
+    }
     lines.push('copy .env.example .env')
     lines.push('php artisan key:generate')
     if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
     lines.push('php artisan migrate --force')
     lines.push('php artisan db:seed')
+    if (hasSwagger) lines.push('php artisan l5-swagger:generate')
     lines.push('')
   } else if (isFastAPIStack(stack)) {
     lines.push('REM Backend — FastAPI')

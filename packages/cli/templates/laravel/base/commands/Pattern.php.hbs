@@ -1,0 +1,1133 @@
+<?php
+{{#if laravelOptions.use_strict_types}}
+
+declare(strict_types=1);
+{{/if}}
+
+namespace App\Console\Commands;
+
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
+use Illuminate\Console\Command;
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Str;
+
+#[Signature('app:pattern
+        {name? : Nom du modèle en PascalCase (ex: Invoice, ProductCategory)}
+        {--full          : Modèle + migration + Service + Controller + Requests + Resource + Routes}
+        {--all           : Identique à --full + Factory + Seeder + Test + Policy + Repository}
+        {--migration     : Génère la migration}
+        {--factory       : Génère la Factory}
+        {--seeder        : Génère le Seeder}
+        {--request       : Génère les Form Requests (Store + Update)}
+        {--resource      : Génère l\'API Resource}
+        {--repository    : Génère le Repository (interface + implémentation)}
+        {--test          : Génère les tests PHPUnit}
+        {--policy        : Génère la Policy}
+        {--swagger       : Génère les annotations Swagger/OpenAPI}
+        {--custom-fields= : Champs (format: name:type,email:string,age:integer)}
+        {--soft-delete   : Ajoute SoftDeletes au modèle}
+        {--force         : Écrase les fichiers existants}
+        {--dry-run       : Affiche les fichiers qui seraient créés, sans les créer}
+        {--rollback      : En cas d\'erreur, supprime les fichiers créés durant cette session}')]
+#[Description('Génère le pattern API complet (Model, Service, Controller, Requests, Resource, Routes, Tests) dans les conventions du projet')]
+class Pattern extends Command
+{
+    /** @var array<string, true> */
+    private array $created = [];
+
+    /** @var array<string, string> */
+    private array $skipped = [];
+
+    /** @var array<string, string> */
+    private array $failed = [];
+
+    /** @var array<string, string> */
+    private array $customFields = [];
+
+    public function __construct(private readonly Filesystem $files)
+    {
+        parent::__construct();
+    }
+
+    // =========================================================================
+    // Point d'entrée
+    // =========================================================================
+
+    public function handle(): int
+    {
+        $name = $this->resolveName();
+
+        if ($name === null) {
+            return self::FAILURE;
+        }
+
+        $this->parseCustomFields();
+
+        if ($this->option('dry-run')) {
+            return $this->runDryRun($name);
+        }
+
+        $this->components->info("Génération du pattern pour : <fg=cyan>{$name}</>");
+
+        $flags = [];
+        if ($this->option('soft-delete')) $flags[] = 'soft-delete';
+        if ($this->option('swagger'))     $flags[] = 'swagger';
+        if (! empty($flags)) {
+            $this->components->info('Options : ' . implode(', ', $flags));
+        }
+
+        $this->newLine();
+
+        // --- Modèle ---
+        if ($this->option('full') || $this->option('all')) {
+            $this->makeModel($name);
+        } elseif (! $this->modelExists($name)) {
+            $this->components->error("Le modèle {$name} n'existe pas. Utilisez --full pour le créer.");
+            return self::FAILURE;
+        }
+
+        // --- Repository ---
+        if ($this->wantsRepository()) {
+            $this->makeRepository($name);
+        }
+
+        // --- Service & Controller ---
+        $this->makeService($name);
+        $this->makeController($name);
+
+        // --- Optionnels ---
+        if ($this->wantsRequest())  $this->makeFormRequests($name);
+        if ($this->wantsResource()) $this->makeResource($name);
+        if ($this->wantsTest())     $this->makeTest($name);
+        if ($this->wantsPolicy())   $this->makePolicy($name);
+
+        // --- Routes ---
+        $this->appendRoutes($name);
+
+        $this->newLine();
+        $this->printReport($name);
+
+        if (! empty($this->failed) && $this->option('rollback')) {
+            $this->runRollback();
+        }
+
+        return empty($this->failed) ? self::SUCCESS : self::FAILURE;
+    }
+
+    // =========================================================================
+    // Résolution du nom
+    // =========================================================================
+
+    private function resolveName(): ?string
+    {
+        $name = $this->argument('name')
+            ?? $this->ask('Quel est le nom du modèle ? <fg=gray>(PascalCase, ex: Invoice)</>');
+
+        if (empty($name)) {
+            $this->components->error('Le nom du modèle est requis.');
+            return null;
+        }
+
+        $name = Str::studly($name);
+
+        $reserved = ['Model', 'Controller', 'Request', 'Resource', 'Service', 'Repository', 'Command', 'Job', 'Event', 'Listener'];
+
+        if (in_array($name, $reserved, true)) {
+            $this->components->error("Le nom \"{$name}\" est réservé par Laravel.");
+            return null;
+        }
+
+        return $name;
+    }
+
+    private function parseCustomFields(): void
+    {
+        $fieldsOption = $this->option('custom-fields');
+        if (! $fieldsOption) return;
+
+        foreach (explode(',', $fieldsOption) as $pair) {
+            if (str_contains($pair, ':')) {
+                [$field, $type] = explode(':', $pair, 2);
+                $this->customFields[trim($field)] = trim($type);
+            }
+        }
+    }
+
+    // =========================================================================
+    // Mode aperçu (dry-run)
+    // =========================================================================
+
+    private function runDryRun(string $name): int
+    {
+        $this->components->info('Mode aperçu — aucun fichier ne sera créé.');
+        $this->newLine();
+
+        $this->line('  <fg=cyan>Fichiers qui seraient générés :</>');
+        $this->newLine();
+
+        foreach ($this->collectExpectedFiles($name) as [$label, $path]) {
+            $exists = $this->files->exists(base_path($path));
+            $icon   = $exists ? '<fg=yellow>~</>' : '<fg=green>+</>';
+            $status = $exists ? '<fg=yellow>existe déjà</>' : '<fg=green>nouveau</>';
+            $this->line("  {$icon} {$path} <fg=gray>({$status})</>");
+        }
+
+        return self::SUCCESS;
+    }
+
+    /** @return array<int, array{string, string}> */
+    private function collectExpectedFiles(string $name): array
+    {
+        $files = [];
+
+        if ($this->option('full') || $this->option('all')) {
+            $files[] = ['Modèle', "app/Models/{$name}.php"];
+        }
+
+        if ($this->wantsRepository()) {
+            $files[] = ['RepositoryInterface', "app/Repositories/Contracts/{$name}RepositoryInterface.php"];
+            $files[] = ['Repository',          "app/Repositories/{$name}Repository.php"];
+        }
+
+        $files[] = ['Service',    "app/Services/{$name}Service.php"];
+        $files[] = ['Controller', "app/Http/Controllers/Api/{$name}Controller.php"];
+
+        if ($this->wantsRequest()) {
+            $files[] = ['StoreRequest',  "app/Http/Requests/{$name}/Store{$name}Request.php"];
+            $files[] = ['UpdateRequest', "app/Http/Requests/{$name}/Update{$name}Request.php"];
+        }
+        if ($this->wantsResource()) {
+            $files[] = ['Resource', "app/Http/Resources/{$name}Resource.php"];
+        }
+        if ($this->wantsTest()) {
+            $files[] = ['Test', "tests/Feature/{$name}Test.php"];
+        }
+        if ($this->wantsPolicy()) {
+            $files[] = ['Policy', "app/Policies/{$name}Policy.php"];
+        }
+
+        return $files;
+    }
+
+    // =========================================================================
+    // Rollback
+    // =========================================================================
+
+    private function runRollback(): void
+    {
+        $this->newLine();
+        $this->components->warn('Rollback — suppression des fichiers créés durant cette session...');
+
+        foreach (array_keys($this->created) as $relative) {
+            $path = base_path($relative);
+            if ($this->files->exists($path)) {
+                $this->files->delete($path);
+                $this->line("  <fg=red>-</> {$relative} supprimé");
+            }
+        }
+    }
+
+    // =========================================================================
+    // Générateurs de fichiers
+    // =========================================================================
+
+    private function makeModel(string $name): void
+    {
+        $options = ['name' => $name, '--no-interaction' => true];
+
+        if ($this->option('migration') || $this->option('full') || $this->option('all')) {
+            $options['--migration'] = true;
+        }
+        if ($this->option('factory') || $this->option('all')) {
+            $options['--factory'] = true;
+        }
+        if ($this->option('seeder') || $this->option('all')) {
+            $options['--seed'] = true;
+        }
+
+        $this->call('make:model', $options);
+        $this->patchModel($name);
+
+        if ($options['--factory'] ?? false) {
+            $this->patchFactory($name);
+        }
+
+        $this->created["app/Models/{$name}.php"] = true;
+    }
+
+    private function patchModel(string $name): void
+    {
+        $path = app_path("Models/{$name}.php");
+        if (! $this->files->exists($path)) return;
+
+        $content = $this->files->get($path);
+
+        // Imports
+        $newImports = [
+            'use Illuminate\\Database\\Eloquent\\Concerns\\HasUuids;',
+            'use Illuminate\\Database\\Eloquent\\Factories\\HasFactory;',
+        ];
+        if ($this->option('soft-delete')) {
+            $newImports[] = 'use Illuminate\\Database\\Eloquent\\SoftDeletes;';
+        }
+
+        $importBlock = '';
+        foreach ($newImports as $import) {
+            if (! str_contains($content, $import)) {
+                $importBlock .= "\n" . $import;
+            }
+        }
+        if ($importBlock !== '') {
+            $content = str_replace(
+                'use Illuminate\\Database\\Eloquent\\Model;',
+                'use Illuminate\\Database\\Eloquent\\Model;' . $importBlock,
+                $content
+            );
+        }
+
+        // Traits
+        $traits = ['HasFactory', 'HasUuids'];
+        if ($this->option('soft-delete')) $traits[] = 'SoftDeletes';
+        $traitLine = 'use ' . implode(', ', $traits) . ';';
+
+        // $fillable
+        $fillableFields = [];
+        foreach (array_keys($this->customFields) as $field) {
+            $fillableFields[] = "'{$field}'";
+        }
+        $fillableBlock = empty($fillableFields)
+            ? "    /** @var list<string> */\n    protected \$fillable = [\n        // TODO: Définir les champs fillable\n    ];"
+            : "    /** @var list<string> */\n    protected \$fillable = [\n        " . implode(",\n        ", $fillableFields) . ",\n    ];";
+
+        // $casts
+        $castsEntries = [];
+        foreach ($this->customFields as $field => $type) {
+            $cast = $this->mapTypeToCast($type);
+            if ($cast !== null) {
+                $castsEntries[] = "        '{$field}' => '{$cast}'";
+            }
+        }
+        $castsBlock = empty($castsEntries)
+            ? "    /** @var array<string, string> */\n    protected \$casts = [\n        // TODO: Définir les casts\n    ];"
+            : "    /** @var array<string, string> */\n    protected \$casts = [\n" . implode(",\n", $castsEntries) . ",\n    ];";
+
+        $newBody = "    {$traitLine}\n\n{$fillableBlock}\n\n{$castsBlock}";
+        $content = preg_replace(
+            '/(class\s+\w+(?:\s+extends\s+\w+)?\s*\{)\s*.*?\s*(\})\s*$/s',
+            "$1\n{$newBody}\n$2\n",
+            $content
+        );
+
+        $this->files->put($path, $content);
+        $this->components->twoColumnDetail('Modèle patché', "<fg=green>{$name}</>");
+    }
+
+    private function makeRepository(string $name): void
+    {
+        $this->write(
+            label: "{$name}RepositoryInterface",
+            path: app_path("Repositories/Contracts/{$name}RepositoryInterface.php"),
+            relative: "app/Repositories/Contracts/{$name}RepositoryInterface.php",
+            content: $this->stubRepositoryInterface($name),
+        );
+
+        $this->write(
+            label: "{$name}Repository",
+            path: app_path("Repositories/{$name}Repository.php"),
+            relative: "app/Repositories/{$name}Repository.php",
+            content: $this->stubRepository($name),
+        );
+    }
+
+    private function makeService(string $name): void
+    {
+        $this->write(
+            label: 'Service',
+            path: app_path("Services/{$name}Service.php"),
+            relative: "app/Services/{$name}Service.php",
+            content: $this->stubService($name),
+        );
+    }
+
+    private function makeController(string $name): void
+    {
+        $this->write(
+            label: 'Controller',
+            path: app_path("Http/Controllers/Api/{$name}Controller.php"),
+            relative: "app/Http/Controllers/Api/{$name}Controller.php",
+            content: $this->stubController($name),
+        );
+    }
+
+    private function makeFormRequests(string $name): void
+    {
+        $this->write(
+            label: "Store{$name}Request",
+            path: app_path("Http/Requests/{$name}/Store{$name}Request.php"),
+            relative: "app/Http/Requests/{$name}/Store{$name}Request.php",
+            content: $this->stubStoreRequest($name),
+        );
+        $this->write(
+            label: "Update{$name}Request",
+            path: app_path("Http/Requests/{$name}/Update{$name}Request.php"),
+            relative: "app/Http/Requests/{$name}/Update{$name}Request.php",
+            content: $this->stubUpdateRequest($name),
+        );
+    }
+
+    private function makeResource(string $name): void
+    {
+        $this->write(
+            label: "{$name}Resource",
+            path: app_path("Http/Resources/{$name}Resource.php"),
+            relative: "app/Http/Resources/{$name}Resource.php",
+            content: $this->stubResource($name),
+        );
+    }
+
+    private function makeTest(string $name): void
+    {
+        $this->write(
+            label: "{$name}Test",
+            path: base_path("tests/Feature/{$name}Test.php"),
+            relative: "tests/Feature/{$name}Test.php",
+            content: $this->stubTest($name),
+        );
+    }
+
+    private function makePolicy(string $name): void
+    {
+        $this->write(
+            label: "{$name}Policy",
+            path: app_path("Policies/{$name}Policy.php"),
+            relative: "app/Policies/{$name}Policy.php",
+            content: $this->stubPolicy($name),
+        );
+    }
+
+    private function appendRoutes(string $name): void
+    {
+        $routePath = base_path('routes/api.php');
+        if (! $this->files->exists($routePath)) {
+            $this->components->warn('routes/api.php introuvable. Ajoutez les routes manuellement.');
+            return;
+        }
+
+        $content = $this->files->get($routePath);
+        $controllerFqn = "App\\Http\\Controllers\\Api\\{$name}Controller";
+        $kebab = Str::kebab(Str::plural($name));
+
+        if (str_contains($content, "{$name}Controller")) {
+            $this->components->twoColumnDetail('Routes', '<fg=yellow>déjà présentes</>');
+            return;
+        }
+
+        $route = "\n    Route::apiResource('{$kebab}', \\{$controllerFqn}::class);";
+
+        // Cherche le groupe auth sanctum existant (généré par stack-init)
+        $authPattern = "/(Route::middleware\(['\"]auth:sanctum['\"]\).*?->group\(function\s*\(\)\s*\{)(.*?)(\}\);)/s";
+
+        if (preg_match($authPattern, $content, $m, PREG_OFFSET_CAPTURE)) {
+            $pos = $m[0][1] + strlen($m[1][0]) + strlen($m[2][0]);
+            $content = substr_replace($content, $route, $pos, 0);
+        } else {
+            // Cherche le marqueur stack-init
+            $marker = '// @stack-init-routes-end';
+            if (str_contains($content, $marker)) {
+                $content = str_replace($marker, $route . "\n    " . $marker, $content);
+            } else {
+                $content .= "\n\nRoute::middleware('auth:sanctum')"
+                    . "\n    ->prefix('{{laravelOptions.api_version}}')"
+                    . "\n    ->group(function () {" . $route . "\n});\n";
+            }
+        }
+
+        $this->files->put($routePath, $content);
+
+        $prefix = '/api/{{laravelOptions.api_version}}/';
+        $this->components->twoColumnDetail("Route ajoutée <fg=gray>{$prefix}{$kebab}</>", '<fg=green>✓</>');
+
+        $this->patchMigration($name);
+    }
+
+    private function patchMigration(string $name): void
+    {
+        $table = Str::snake(Str::plural($name));
+        $migrationFiles = glob(database_path('migrations/*.php')) ?: [];
+
+        foreach ($migrationFiles as $file) {
+            $content = file_get_contents($file);
+            if (! str_contains($content, "Schema::create('{$table}'")) continue;
+
+            $newContent = str_replace('$table->id();', '$table->uuid(\'id\')->primary();', $content);
+
+            if (! empty($this->customFields)) {
+                $columns = '';
+                foreach ($this->customFields as $field => $type) {
+                    $columns .= "\n            " . $this->mapTypeToMigrationColumn($field, $type) . ';';
+                }
+                $newContent = str_replace(
+                    '$table->timestamps();',
+                    ltrim($columns) . "\n            \$table->timestamps();",
+                    $newContent
+                );
+            }
+
+            if ($this->option('soft-delete')) {
+                $newContent = str_replace(
+                    '$table->timestamps();',
+                    "\$table->timestamps();\n            \$table->softDeletes();",
+                    $newContent
+                );
+            }
+
+            file_put_contents($file, $newContent);
+
+            $patches = ['UUID'];
+            if (! empty($this->customFields)) $patches[] = count($this->customFields) . ' colonnes';
+            if ($this->option('soft-delete'))  $patches[] = 'soft_deletes';
+
+            $this->components->twoColumnDetail(
+                'Migration patchée (' . implode(' + ', $patches) . ')',
+                "<fg=green>{$table}</>"
+            );
+            break;
+        }
+    }
+
+    private function patchFactory(string $name): void
+    {
+        $path = database_path("factories/{$name}Factory.php");
+        if (! $this->files->exists($path) || empty($this->customFields)) return;
+
+        $content = $this->files->get($path);
+
+        $entries = [];
+        foreach ($this->customFields as $field => $type) {
+            $entries[] = "            '{$field}' => " . $this->generateFakerForField($field, $type) . ',';
+        }
+
+        $content = str_replace(
+            "return [\n            //\n        ];",
+            "return [\n" . implode("\n", $entries) . "\n        ];",
+            $content
+        );
+
+        $this->files->put($path, $content);
+        $this->components->twoColumnDetail("{$name}Factory patchée", '<fg=green>✓</>');
+    }
+
+    // =========================================================================
+    // Écriture avec force / skip / rollback
+    // =========================================================================
+
+    private function write(string $label, string $path, string $relative, string $content): void
+    {
+        if ($this->files->exists($path) && ! $this->option('force')) {
+            $this->components->twoColumnDetail($label, '<fg=yellow>ignoré (--force pour écraser)</>');
+            $this->skipped[$relative] = 'Utilisez --force pour écraser.';
+            return;
+        }
+
+        try {
+            $this->files->ensureDirectoryExists(dirname($path));
+            $this->files->put($path, $content);
+            $this->components->twoColumnDetail($label, '<fg=green>créé</>');
+            $this->created[$relative] = true;
+        } catch (\Throwable $e) {
+            $this->components->twoColumnDetail($label, '<fg=red>ERREUR : ' . $e->getMessage() . '</>');
+            $this->failed[$relative] = $e->getMessage();
+
+            if ($this->option('rollback')) {
+                $this->runRollback();
+                $this->components->error('Rollback effectué. Abandon.');
+                exit(self::FAILURE);
+            }
+        }
+    }
+
+    // =========================================================================
+    // Rapport final
+    // =========================================================================
+
+    private function printReport(string $name): void
+    {
+        $kebab = Str::kebab(Str::plural($name));
+        $prefix = "{{laravelOptions.api_version}}/{$kebab}";
+
+        if (! empty($this->created)) {
+            $this->components->info(count($this->created) . ' fichier(s) créé(s) :');
+            foreach (array_keys($this->created) as $f) {
+                $this->line("  <fg=green>+</> {$f}");
+            }
+            $this->newLine();
+        }
+
+        if (! empty($this->skipped)) {
+            $this->components->warn(count($this->skipped) . ' fichier(s) ignoré(s) :');
+            foreach (array_keys($this->skipped) as $f) {
+                $this->line("  <fg=yellow>~</> {$f}");
+            }
+            $this->newLine();
+        }
+
+        if (! empty($this->failed)) {
+            $this->components->error(count($this->failed) . ' erreur(s) :');
+            foreach ($this->failed as $f => $msg) {
+                $this->line("  <fg=red>✗</> {$f} : {$msg}");
+            }
+            $this->newLine();
+        }
+
+        $this->line('<fg=cyan>Routes disponibles :</>');
+        foreach ([['GET', ''], ['POST', ''], ['GET', '/{id}'], ['PUT', '/{id}'], ['DELETE', '/{id}']] as [$method, $suffix]) {
+            $this->line("  <fg=gray>{$method}</>\t/api/{$prefix}{$suffix}");
+        }
+
+        $this->newLine();
+        $this->line('<fg=magenta>Prochaines étapes :</>');
+        $step = 1;
+        $this->line("  {$step}. Définir \$fillable dans le Model et les rules dans les Requests");
+        $step++;
+        $this->line("  {$step}. Implémenter la logique métier dans le Service");
+        $step++;
+        if ($this->wantsTest()) {
+            $this->line("  {$step}. php artisan test --filter={$name}Test");
+            $step++;
+        }
+        $this->line("  {$step}. php artisan migrate");
+    }
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+
+    private function modelExists(string $name): bool
+    {
+        return $this->files->exists(app_path("Models/{$name}.php"));
+    }
+
+    private function wantsRequest():    bool { return (bool) ($this->option('request')    || $this->option('full') || $this->option('all')); }
+    private function wantsResource():   bool { return (bool) ($this->option('resource')   || $this->option('full') || $this->option('all')); }
+    private function wantsTest():       bool { return (bool) ($this->option('test')       || $this->option('all')); }
+    private function wantsPolicy():     bool { return (bool) ($this->option('policy')     || $this->option('all')); }
+    private function wantsRepository(): bool { return (bool) ($this->option('repository') || $this->option('all')); }
+
+    // =========================================================================
+    // Stubs
+    // =========================================================================
+
+    private function stubRepositoryInterface(string $name): string
+    {
+        return <<<PHP
+<?php
+
+namespace App\Repositories\Contracts;
+
+interface {$name}RepositoryInterface extends BaseRepositoryInterface
+{
+    // TODO: Ajouter les méthodes spécifiques à {$name}
+}
+PHP;
+    }
+
+    private function stubRepository(string $name): string
+    {
+        $var = Str::camel($name);
+
+        return <<<PHP
+<?php
+
+namespace App\Repositories;
+
+use App\Models\\{$name};
+use App\Repositories\Contracts\\{$name}RepositoryInterface;
+use Illuminate\Database\Eloquent\Builder;
+
+class {$name}Repository extends BaseRepository implements {$name}RepositoryInterface
+{
+    public function __construct({$name} \$model)
+    {
+        parent::__construct(\$model);
+    }
+
+    protected function applyFilters(Builder \$query, array \$filters): Builder
+    {
+        return \$query
+            ->when(\$filters['search'] ?? null, fn (Builder \$q, string \$v) => \$q->where('name', 'like', "%{\$v}%"));
+    }
+}
+PHP;
+    }
+
+    private function stubService(string $name): string
+    {
+        $var    = Str::camel($name);
+        $plural = Str::plural($var);
+        $hasRep = $this->wantsRepository();
+
+        if ($hasRep) {
+            $useRepo     = "\nuse App\\Repositories\\Contracts\\{$name}RepositoryInterface;";
+            $constructor = "    public function __construct(\n        private readonly {$name}RepositoryInterface \$repository\n    ) {}";
+            $indexBody   = 'return $this->repository->paginate($filters, $perPage);';
+            $showBody    = 'return $this->repository->findOrFail($id);';
+            $storeBody   = 'return $this->repository->create($data);';
+            $updateBody  = "return \$this->repository->update(\${$var}, \$data);";
+            $destroyBody = "\$this->repository->delete(\${$var});";
+        } else {
+            $useRepo     = '';
+            $constructor = '';
+            $indexBody   = "{$name}::query()->latest()->paginate(\$perPage);";
+            $showBody    = "return {$name}::findOrFail(\$id);";
+            $storeBody   = "return {$name}::create(\$data);";
+            $updateBody  = "\${$var}->update(\$data);\n        return \${$var}->fresh();";
+            $destroyBody = "\${$var}->delete();";
+        }
+
+        return <<<PHP
+<?php
+
+namespace App\Services;
+{$useRepo}
+use App\Models\\{$name};
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+
+class {$name}Service
+{
+{$constructor}
+
+    public function index(array \$filters = [], int \$perPage = 15): LengthAwarePaginator
+    {
+        {$indexBody}
+    }
+
+    public function show(string \$id): {$name}
+    {
+        {$showBody}
+    }
+
+    public function store(array \$data): {$name}
+    {
+        {$storeBody}
+    }
+
+    public function update({$name} \${$var}, array \$data): {$name}
+    {
+        {$updateBody}
+    }
+
+    public function destroy({$name} \${$var}): void
+    {
+        {$destroyBody}
+    }
+}
+PHP;
+    }
+
+    private function stubController(string $name): string
+    {
+        $var    = Str::camel($name);
+        $hasReq = $this->wantsRequest();
+        $hasRes = $this->wantsResource();
+
+        $storeType  = $hasReq ? "Store{$name}Request"  : 'Request';
+        $updateType = $hasReq ? "Update{$name}Request" : 'Request';
+
+        $useReq = $hasReq
+            ? "use App\\Http\\Requests\\{$name}\\Store{$name}Request;\nuse App\\Http\\Requests\\{$name}\\Update{$name}Request;"
+            : 'use Illuminate\\Http\\Request;';
+        $useRes  = $hasRes ? "\nuse App\\Http\\Resources\\{$name}Resource;" : '';
+        $resWrap = fn (string $expr) => $hasRes ? "new {$name}Resource({$expr})" : $expr;
+        $resClass = $hasRes ? ", {$name}Resource::class" : '';
+
+        {{#if laravelOptions.use_api_response}}
+        $useApiResponse = "\nuse App\\Traits\\ApiResponse;";
+        $traitLine      = "    use ApiResponse;\n";
+
+        return <<<PHP
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+{$useReq}{$useRes}{$useApiResponse}
+use App\Models\\{$name};
+use App\Services\\{$name}Service;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class {$name}Controller extends Controller
+{
+{$traitLine}
+    public function __construct(
+        private readonly {$name}Service \$service
+    ) {}
+
+    public function index(Request \$request): JsonResponse
+    {
+        return \$this->try(function () use (\$request) {
+            \$paginator = \$this->service->index(\$request->all(), \$request->integer('per_page', 15));
+            return \$this->paginated(\$paginator{$resClass});
+        });
+    }
+
+    public function show({$name} \${$var}): JsonResponse
+    {
+        return \$this->try(function () use (\${$var}) {
+            return \$this->success({$resWrap('$'.$var)});
+        });
+    }
+
+    public function store({$storeType} \$request): JsonResponse
+    {
+        return \$this->try(function () use (\$request) {
+            \$model = \$this->service->store(\$request->validated());
+            return \$this->created({$resWrap('$model')});
+        });
+    }
+
+    public function update({$updateType} \$request, {$name} \${$var}): JsonResponse
+    {
+        return \$this->try(function () use (\$request, \${$var}) {
+            \$model = \$this->service->update(\${$var}, \$request->validated());
+            return \$this->updated({$resWrap('$model')});
+        });
+    }
+
+    public function destroy({$name} \${$var}): JsonResponse
+    {
+        return \$this->try(function () use (\${$var}) {
+            \$this->service->destroy(\${$var});
+            return \$this->deleted();
+        });
+    }
+}
+PHP;
+        {{else}}
+        return <<<PHP
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+{$useReq}{$useRes}
+use App\Models\\{$name};
+use App\Services\\{$name}Service;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class {$name}Controller extends Controller
+{
+    public function __construct(
+        private readonly {$name}Service \$service
+    ) {}
+
+    public function index(Request \$request): JsonResponse
+    {
+        \$paginator = \$this->service->index(\$request->all(), \$request->integer('per_page', 15));
+        return response()->json(['data' => \$paginator->items(), 'meta' => ['total' => \$paginator->total()]]);
+    }
+
+    public function show({$name} \${$var}): JsonResponse
+    {
+        return response()->json({$resWrap('$'.$var)});
+    }
+
+    public function store({$storeType} \$request): JsonResponse
+    {
+        \$model = \$this->service->store(\$request->validated());
+        return response()->json({$resWrap('$model')}, 201);
+    }
+
+    public function update({$updateType} \$request, {$name} \${$var}): JsonResponse
+    {
+        \$model = \$this->service->update(\${$var}, \$request->validated());
+        return response()->json({$resWrap('$model')});
+    }
+
+    public function destroy({$name} \${$var}): JsonResponse
+    {
+        \$this->service->destroy(\${$var});
+        return response()->json(null, 204);
+    }
+}
+PHP;
+        {{/if}}
+    }
+
+    private function stubStoreRequest(string $name): string
+    {
+        $fields = ! empty($this->customFields) ? $this->customFields : ['name' => 'string'];
+        $rulesArray = [];
+        foreach ($fields as $field => $type) {
+            $rulesArray[] = "            '{$field}' => ['required', '{$this->mapTypeToValidation($type)}'],";
+        }
+        $rules = implode("\n", $rulesArray);
+
+        return <<<PHP
+<?php
+
+namespace App\Http\Requests\\{$name};
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class Store{$name}Request extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    /** @return array<string, array<string>|string> */
+    public function rules(): array
+    {
+        return [
+{$rules}
+        ];
+    }
+}
+PHP;
+    }
+
+    private function stubUpdateRequest(string $name): string
+    {
+        $fields = ! empty($this->customFields) ? $this->customFields : ['name' => 'string'];
+        $rulesArray = [];
+        foreach ($fields as $field => $type) {
+            $rulesArray[] = "            '{$field}' => ['sometimes', '{$this->mapTypeToValidation($type)}'],";
+        }
+        $rules = implode("\n", $rulesArray);
+
+        return <<<PHP
+<?php
+
+namespace App\Http\Requests\\{$name};
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class Update{$name}Request extends FormRequest
+{
+    public function authorize(): bool { return true; }
+
+    /** @return array<string, array<string>|string> */
+    public function rules(): array
+    {
+        return [
+{$rules}
+        ];
+    }
+}
+PHP;
+    }
+
+    private function stubResource(string $name): string
+    {
+        $fields = ! empty($this->customFields) ? $this->customFields : ['name' => 'string'];
+        $resourceFields = ["'id' => \$this->id"];
+        foreach (array_keys($fields) as $field) {
+            $resourceFields[] = "'{$field}' => \$this->{$field}";
+        }
+        $resourceFields[] = "'created_at' => \$this->created_at?->toIso8601String()";
+        $resourceFields[] = "'updated_at' => \$this->updated_at?->toIso8601String()";
+        $fieldsArray = implode(",\n            ", $resourceFields);
+
+        return <<<PHP
+<?php
+
+namespace App\Http\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class {$name}Resource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request \$request): array
+    {
+        return [
+            {$fieldsArray},
+        ];
+    }
+}
+PHP;
+    }
+
+    private function stubTest(string $name): string
+    {
+        $kebab = Str::kebab(Str::plural($name));
+        $var   = Str::camel($name);
+        $table = Str::snake(Str::plural($name));
+        {{#if laravelOptions.use_api_response}}
+        $assertStructure = "'success', 'data', 'meta'";
+        $assertSuccess   = "->assertJsonPath('success', true)";
+        {{else}}
+        $assertStructure = "'data', 'meta'";
+        $assertSuccess   = '';
+        {{/if}}
+
+        return <<<PHP
+<?php
+
+namespace Tests\\Feature;
+
+use App\\Models\\{$name};
+use App\\Models\\User;
+use Illuminate\\Foundation\\Testing\\RefreshDatabase;
+use Tests\\TestCase;
+
+class {$name}Test extends TestCase
+{
+    use RefreshDatabase;
+
+    private User \$user;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        \$this->user = User::factory()->create();
+        \$this->actingAs(\$this->user);
+    }
+
+    public function test_liste_les_{$kebab}(): void
+    {
+        {$name}::factory()->count(3)->create();
+        \$this->getJson('/api/{{laravelOptions.api_version}}/{$kebab}')
+            ->assertOk()
+            ->assertJsonStructure([{$assertStructure}]);
+    }
+
+    public function test_cree_un_{$var}(): void
+    {
+        \$payload = {$name}::factory()->make()->toArray();
+        \$this->postJson('/api/{{laravelOptions.api_version}}/{$kebab}', \$payload)
+            ->assertCreated(){$assertSuccess};
+        \$this->assertDatabaseHas('{$table}', \$payload);
+    }
+
+    public function test_affiche_un_{$var}(): void
+    {
+        \${$var} = {$name}::factory()->create();
+        \$this->getJson("/api/{{laravelOptions.api_version}}/{$kebab}/{\${$var}->id}")
+            ->assertOk()
+            ->assertJsonPath('data.id', \${$var}->id);
+    }
+
+    public function test_met_a_jour_un_{$var}(): void
+    {
+        \${$var} = {$name}::factory()->create();
+        \$payload = {$name}::factory()->make()->toArray();
+        \$this->putJson("/api/{{laravelOptions.api_version}}/{$kebab}/{\${$var}->id}", \$payload)
+            ->assertOk(){$assertSuccess};
+    }
+
+    public function test_supprime_un_{$var}(): void
+    {
+        \${$var} = {$name}::factory()->create();
+        \$this->deleteJson("/api/{{laravelOptions.api_version}}/{$kebab}/{\${$var}->id}")
+            ->assertOk(){$assertSuccess};
+        \$this->assertDatabaseMissing('{$table}', ['id' => \${$var}->id]);
+    }
+
+    public function test_retourne_404_pour_un_{$var}_inexistant(): void
+    {
+        \$this->getJson('/api/{{laravelOptions.api_version}}/{$kebab}/id-inexistant')
+            ->assertNotFound();
+    }
+}
+PHP;
+    }
+
+    private function stubPolicy(string $name): string
+    {
+        $var = Str::camel($name);
+
+        return <<<PHP
+<?php
+
+namespace App\Policies;
+
+use App\Models\\{$name};
+use App\Models\User;
+
+class {$name}Policy
+{
+    public function viewAny(User \$user): bool { return true; }
+    public function view(User \$user, {$name} \${$var}): bool { return true; }
+    public function create(User \$user): bool { return true; }
+    public function update(User \$user, {$name} \${$var}): bool { return true; }
+    public function delete(User \$user, {$name} \${$var}): bool { return true; }
+    public function forceDelete(User \$user, {$name} \${$var}): bool { return false; }
+}
+PHP;
+    }
+
+    // =========================================================================
+    // Type Mapping Helpers
+    // =========================================================================
+
+    private function mapTypeToMigrationColumn(string $field, string $type): string
+    {
+        return match (strtolower($type)) {
+            'string'           => "\$table->string('{$field}')",
+            'text'             => "\$table->text('{$field}')",
+            'integer', 'int'   => "\$table->integer('{$field}')",
+            'float'            => "\$table->float('{$field}')",
+            'decimal'          => "\$table->decimal('{$field}', 10, 2)",
+            'boolean', 'bool'  => "\$table->boolean('{$field}')->default(false)",
+            'date'             => "\$table->date('{$field}')->nullable()",
+            'datetime'         => "\$table->dateTime('{$field}')->nullable()",
+            'json', 'array'    => "\$table->json('{$field}')->nullable()",
+            'email'            => "\$table->string('{$field}')",
+            default            => "\$table->string('{$field}')",
+        };
+    }
+
+    private function generateFakerForField(string $field, string $type): string
+    {
+        $lower = strtolower($field);
+
+        if (str_contains($lower, 'email'))                                  return 'fake()->safeEmail()';
+        if (str_contains($lower, 'phone'))                                  return 'fake()->phoneNumber()';
+        if (str_contains($lower, 'name'))                                   return 'fake()->name()';
+        if (str_contains($lower, 'title'))                                  return 'fake()->sentence(3)';
+        if (str_contains($lower, 'description') || str_contains($lower, 'note')) return 'fake()->paragraph()';
+        if (str_contains($lower, 'url') || str_contains($lower, 'link'))   return 'fake()->url()';
+
+        return match (strtolower($type)) {
+            'string'            => 'fake()->word()',
+            'text'              => 'fake()->paragraph()',
+            'integer', 'int'    => 'fake()->randomNumber()',
+            'float', 'decimal'  => 'fake()->randomFloat(2, 0, 1000)',
+            'boolean', 'bool'   => 'fake()->boolean()',
+            'date'              => 'fake()->date()',
+            'datetime'          => "fake()->dateTime()->format('Y-m-d H:i:s')",
+            'email'             => 'fake()->safeEmail()',
+            'json', 'array'     => '[]',
+            default             => 'fake()->word()',
+        };
+    }
+
+    private function mapTypeToCast(string $type): ?string
+    {
+        return match (strtolower($type)) {
+            'integer', 'int'           => 'integer',
+            'float', 'decimal'         => 'float',
+            'boolean', 'bool'          => 'boolean',
+            'date'                     => 'date',
+            'datetime'                 => 'datetime',
+            'json', 'array'            => 'array',
+            default                    => null,
+        };
+    }
+
+    private function mapTypeToValidation(string $type): string
+    {
+        return match (strtolower($type)) {
+            'string', 'text'           => "string', 'max:255",
+            'integer', 'int'           => 'integer',
+            'float', 'decimal'         => 'numeric',
+            'boolean', 'bool'          => 'boolean',
+            'date', 'datetime'         => 'date',
+            'email'                    => 'email',
+            default                    => 'string',
+        };
+    }
+}

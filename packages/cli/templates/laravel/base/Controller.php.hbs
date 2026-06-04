@@ -21,10 +21,17 @@ use App\Http\Requests\Update{{name}}Request;
 {{#if generate.service}}
 use App\Services\\{{name}}Service;
 {{/if}}
+{{#if laravelOptions.use_api_response}}
+use App\Traits\ApiResponse;
+{{/if}}
 use Illuminate\Http\{JsonResponse, Request};
 
 class {{name}}Controller extends Controller
 {
+{{#if laravelOptions.use_api_response}}
+    use ApiResponse;
+
+{{/if}}
 {{#if generate.service}}
     public function __construct(
         private {{#if laravelOptions.use_readonly}}readonly {{/if}}{{name}}Service $service
@@ -35,17 +42,35 @@ class {{name}}Controller extends Controller
      * Display a listing of the resource.
      {{#if generate.swagger}}
      * @OA\Get(
-     *     path="/{{laravelOptions.route_prefix}}/{{routeName}}",
+     *     path="/{{laravelOptions.route_prefix}}/{{laravelOptions.api_version}}/{{routeName}}",
      *     operationId="get{{name}}List",
      *     tags={"{{name}}"},
      *     summary="Get list of {{name}}",
+{{{swaggerSecurity}}}
      *     @OA\Parameter(name="per_page", in="query", required=false, @OA\Schema(type="integer", example=15)),
-     *     @OA\Response(response=200, description="Successful operation")
+     *     @OA\Response(response=200, description="Successful operation"),
+     *     @OA\Response(response=401, description="Unauthenticated", @OA\JsonContent(ref="#/components/schemas/ErrorResponse"))
      * )
      {{/if}}
      */
     public function index(Request $request): JsonResponse
     {
+{{#if laravelOptions.use_api_response}}
+        return $this->try(function () use ($request) {
+{{#if generate.service}}
+            $paginator = $this->service->paginate($request->all(), $request->integer('per_page', 15));
+{{else}}
+            $paginator = {{name}}::query()->paginate($request->integer('per_page', 15));
+{{/if}}
+{{#if generate.collection}}
+            return $this->paginated($paginator, {{name}}Collection::class);
+{{else if generate.resource}}
+            return $this->paginated($paginator, {{name}}Resource::class);
+{{else}}
+            return $this->paginated($paginator);
+{{/if}}
+        });
+{{else}}
 {{#if generate.service}}
         $items = $this->service->paginate($request);
 {{else}}
@@ -58,28 +83,41 @@ class {{name}}Controller extends Controller
 {{else}}
         return response()->json($items);
 {{/if}}
+{{/if}}
     }
 
     /**
      * Display the specified resource.
      {{#if generate.swagger}}
      * @OA\Get(
-     *     path="/{{laravelOptions.route_prefix}}/{{routeName}}/{id}",
+     *     path="/{{laravelOptions.route_prefix}}/{{laravelOptions.api_version}}/{{routeName}}/{id}",
      *     operationId="get{{name}}ById",
      *     tags={"{{name}}"},
      *     summary="Get {{name}} information",
+{{{swaggerSecurity}}}
      *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="{{idType}}")),
      *     @OA\Response(response=200, description="Successful operation"),
-     *     @OA\Response(response=404, description="Resource not found")
+     *     @OA\Response(response=404, description="Not found", @OA\JsonContent(ref="#/components/schemas/ErrorResponse")),
+     *     @OA\Response(response=401, description="Unauthenticated", @OA\JsonContent(ref="#/components/schemas/ErrorResponse"))
      * )
      {{/if}}
      */
     public function show({{name}} ${{varName}}): JsonResponse
     {
+{{#if laravelOptions.use_api_response}}
+        return $this->try(function () use (${{varName}}) {
+{{#if generate.resource}}
+            return $this->success(new {{name}}Resource(${{varName}}));
+{{else}}
+            return $this->success(${{varName}});
+{{/if}}
+        });
+{{else}}
 {{#if generate.resource}}
         return (new {{name}}Resource(${{varName}}))->response();
 {{else}}
         return response()->json(${{varName}});
+{{/if}}
 {{/if}}
     }
 
@@ -87,10 +125,11 @@ class {{name}}Controller extends Controller
      * Store a newly created resource in storage.
      {{#if generate.swagger}}
      * @OA\Post(
-     *     path="/{{laravelOptions.route_prefix}}/{{routeName}}",
+     *     path="/{{laravelOptions.route_prefix}}/{{laravelOptions.api_version}}/{{routeName}}",
      *     operationId="store{{name}}",
      *     tags={"{{name}}"},
      *     summary="Store new {{name}}",
+{{{swaggerSecurity}}}
      *     @OA\RequestBody(required=true,
      *         @OA\JsonContent(
 {{#each swaggerFields}}
@@ -99,12 +138,27 @@ class {{name}}Controller extends Controller
      *         )
      *     ),
      *     @OA\Response(response=201, description="Resource created"),
-     *     @OA\Response(response=422, description="Validation error")
+     *     @OA\Response(response=422, description="Validation error", @OA\JsonContent(ref="#/components/schemas/ValidationErrorResponse")),
+     *     @OA\Response(response=401, description="Unauthenticated", @OA\JsonContent(ref="#/components/schemas/ErrorResponse"))
      * )
      {{/if}}
      */
     public function store({{#if generate.request}}Store{{name}}Request{{else}}Request{{/if}} $request): JsonResponse
     {
+{{#if laravelOptions.use_api_response}}
+        return $this->try(function () use ($request) {
+{{#if generate.service}}
+            $item = $this->service->create($request->validated());
+{{else}}
+            $item = {{name}}::create($request->validated());
+{{/if}}
+{{#if generate.resource}}
+            return $this->created(new {{name}}Resource($item));
+{{else}}
+            return $this->created($item);
+{{/if}}
+        });
+{{else}}
 {{#if generate.service}}
         $item = $this->service->create($request->validated());
 {{else}}
@@ -115,16 +169,18 @@ class {{name}}Controller extends Controller
 {{else}}
         return response()->json($item, 201);
 {{/if}}
+{{/if}}
     }
 
     /**
      * Update the specified resource in storage.
      {{#if generate.swagger}}
      * @OA\Put(
-     *     path="/{{laravelOptions.route_prefix}}/{{routeName}}/{id}",
+     *     path="/{{laravelOptions.route_prefix}}/{{laravelOptions.api_version}}/{{routeName}}/{id}",
      *     operationId="update{{name}}",
      *     tags={"{{name}}"},
      *     summary="Update existing {{name}}",
+{{{swaggerSecurity}}}
      *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="{{idType}}")),
      *     @OA\RequestBody(required=true,
      *         @OA\JsonContent(
@@ -134,13 +190,29 @@ class {{name}}Controller extends Controller
      *         )
      *     ),
      *     @OA\Response(response=200, description="Successful operation"),
-     *     @OA\Response(response=404, description="Resource not found"),
-     *     @OA\Response(response=422, description="Validation error")
+     *     @OA\Response(response=404, description="Not found", @OA\JsonContent(ref="#/components/schemas/ErrorResponse")),
+     *     @OA\Response(response=422, description="Validation error", @OA\JsonContent(ref="#/components/schemas/ValidationErrorResponse")),
+     *     @OA\Response(response=401, description="Unauthenticated", @OA\JsonContent(ref="#/components/schemas/ErrorResponse"))
      * )
      {{/if}}
      */
     public function update({{#if generate.request}}Update{{name}}Request{{else}}Request{{/if}} $request, {{name}} ${{varName}}): JsonResponse
     {
+{{#if laravelOptions.use_api_response}}
+        return $this->try(function () use ($request, ${{varName}}) {
+{{#if generate.service}}
+            $item = $this->service->update(${{varName}}, $request->validated());
+{{else}}
+            ${{varName}}->update($request->validated());
+            $item = ${{varName}}->fresh();
+{{/if}}
+{{#if generate.resource}}
+            return $this->updated(new {{name}}Resource($item));
+{{else}}
+            return $this->updated($item);
+{{/if}}
+        });
+{{else}}
 {{#if generate.service}}
         $item = $this->service->update(${{varName}}, $request->validated());
 {{else}}
@@ -152,29 +224,43 @@ class {{name}}Controller extends Controller
 {{else}}
         return response()->json($item);
 {{/if}}
+{{/if}}
     }
 
     /**
      * Remove the specified resource from storage.
      {{#if generate.swagger}}
      * @OA\Delete(
-     *     path="/{{laravelOptions.route_prefix}}/{{routeName}}/{id}",
+     *     path="/{{laravelOptions.route_prefix}}/{{laravelOptions.api_version}}/{{routeName}}/{id}",
      *     operationId="delete{{name}}",
      *     tags={"{{name}}"},
      *     summary="Delete {{name}}",
+{{{swaggerSecurity}}}
      *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="{{idType}}")),
-     *     @OA\Response(response=204, description="Successful operation"),
-     *     @OA\Response(response=404, description="Resource not found")
+     *     @OA\Response(response=200, description="Deleted successfully"),
+     *     @OA\Response(response=404, description="Not found", @OA\JsonContent(ref="#/components/schemas/ErrorResponse")),
+     *     @OA\Response(response=401, description="Unauthenticated", @OA\JsonContent(ref="#/components/schemas/ErrorResponse"))
      * )
      {{/if}}
      */
     public function destroy({{name}} ${{varName}}): JsonResponse
     {
+{{#if laravelOptions.use_api_response}}
+        return $this->try(function () use (${{varName}}) {
+{{#if generate.service}}
+            $this->service->delete(${{varName}});
+{{else}}
+            ${{varName}}->delete();
+{{/if}}
+            return $this->deleted();
+        });
+{{else}}
 {{#if generate.service}}
         $this->service->delete(${{varName}});
 {{else}}
         ${{varName}}->delete();
 {{/if}}
         return response()->json(null, 204);
+{{/if}}
     }
 }

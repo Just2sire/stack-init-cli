@@ -1,0 +1,99 @@
+<?php
+{{#if laravelOptions.use_strict_types}}
+
+declare(strict_types=1);
+{{/if}}
+
+namespace App\Repositories;
+
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
+
+/**
+ * Repository CRUD générique.
+ *
+ * Chaque repo enfant :
+ *  - Appelle parent::__construct($model) avec son modèle typé.
+ *  - Surcharge applyFilters() pour ses filtres métier.
+ *  - Ajoute ses méthodes spécifiques.
+ *
+ * Le CRUD de base n'est JAMAIS réécrit dans les repos enfants.
+ */
+abstract class BaseRepository
+{
+    public function __construct(protected Model $model) {}
+
+    // =========================================================================
+    // Lecture
+    // =========================================================================
+
+    public function paginate(array $filters = [], int $perPage = 15): LengthAwarePaginator
+    {
+        return $this->applyFilters($this->newQuery(), $filters)
+            ->latest()
+            ->paginate($perPage);
+    }
+
+    public function all(array $filters = []): Collection
+    {
+        return $this->applyFilters($this->newQuery(), $filters)
+            ->latest()
+            ->get();
+    }
+
+    public function find(string $id): ?Model
+    {
+        return $this->model->find($id);
+    }
+
+    public function findOrFail(string $id): Model
+    {
+        return $this->model->findOrFail($id);
+    }
+
+    // =========================================================================
+    // Écriture
+    // =========================================================================
+
+    public function create(array $data): Model
+    {
+        return $this->model->create($data);
+    }
+
+    public function update(Model $model, array $data): Model
+    {
+        $model->update($data);
+
+        return $model->fresh();
+    }
+
+    public function delete(Model $model): bool
+    {
+        return (bool) $model->delete();
+    }
+
+    // =========================================================================
+    // Filtrage (hook à surcharger)
+    // =========================================================================
+
+    /**
+     * Applique les filtres au query builder.
+     *
+     * Surcharger dans chaque repo enfant pour les filtres métier.
+     * Par défaut, supporte un filtre `search` générique sur `name`.
+     */
+    protected function applyFilters(Builder $query, array $filters): Builder
+    {
+        return $query->when(
+            $filters['search'] ?? null,
+            fn (Builder $q, string $v) => $q->where('name', 'like', "%{$v}%")
+        );
+    }
+
+    protected function newQuery(): Builder
+    {
+        return $this->model->newQuery();
+    }
+}
