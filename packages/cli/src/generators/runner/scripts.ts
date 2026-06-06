@@ -24,6 +24,9 @@ export function generateSetupSh(config: ProjectConfig): string {
   const needsInstallApi = isLaravelStack(stack)
     && (laravelAuth === 'sanctum' || laravelAuth === 'passport')
     && laravelVer >= 11
+  const needsPassport  = isLaravelStack(stack) && laravelAuth === 'passport'
+  const needsBreeze    = isLaravelStack(stack) && laravelAuth === 'breeze'
+  const needsJetstream = isLaravelStack(stack) && laravelAuth === 'jetstream'
   const hasSwagger = isLaravelStack(stack) && config.models.some(m => m.generate?.swagger)
   const lines: string[] = [
     '#!/usr/bin/env bash',
@@ -34,6 +37,8 @@ export function generateSetupSh(config: ProjectConfig): string {
 
   if (isLaravelStack(stack)) {
     lines.push('# Backend — Laravel')
+    lines.push('# Vider le cache bootstrap avant l\'installation (évite les conflits de providers)')
+    lines.push('rm -f bootstrap/cache/packages.php bootstrap/cache/services.php bootstrap/cache/config.php bootstrap/cache/routes.php')
     lines.push('composer update --no-interaction')
     if (hasSwagger) {
       lines.push('')
@@ -44,7 +49,16 @@ export function generateSetupSh(config: ProjectConfig): string {
     }
     lines.push('cp .env.example .env')
     lines.push('php artisan key:generate')
+    if (needsPassport)  lines.push('composer require laravel/passport --no-interaction')
     if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
+    if (needsBreeze) {
+      lines.push('composer require laravel/breeze --no-interaction')
+      lines.push('php artisan breeze:install api --no-interaction')
+    }
+    if (needsJetstream) {
+      lines.push('composer require laravel/jetstream --no-interaction')
+      lines.push('php artisan jetstream:install inertia --no-interaction')
+    }
     lines.push('php artisan migrate --force')
     lines.push('php artisan db:seed')
     if (hasSwagger) lines.push('php artisan l5-swagger:generate')
@@ -86,6 +100,9 @@ export function generateSetupPs1(config: ProjectConfig): string {
   const needsInstallApi = isLaravelStack(stack)
     && (laravelAuth === 'sanctum' || laravelAuth === 'passport')
     && laravelVer >= 11
+  const needsPassport  = isLaravelStack(stack) && laravelAuth === 'passport'
+  const needsBreeze    = isLaravelStack(stack) && laravelAuth === 'breeze'
+  const needsJetstream = isLaravelStack(stack) && laravelAuth === 'jetstream'
   const hasSwagger = isLaravelStack(stack) && config.models.some(m => m.generate?.swagger)
   const lines: string[] = [
     'Set-StrictMode -Version Latest',
@@ -96,6 +113,8 @@ export function generateSetupPs1(config: ProjectConfig): string {
 
   if (isLaravelStack(stack)) {
     lines.push('# Backend — Laravel')
+    lines.push('# Vider le cache bootstrap avant l\'installation (évite les conflits de providers)')
+    lines.push('@("bootstrap/cache/packages.php","bootstrap/cache/services.php","bootstrap/cache/config.php","bootstrap/cache/routes.php") | ForEach-Object { if (Test-Path $_) { Remove-Item $_ -Force } }')
     lines.push('composer update --no-interaction')
     if (hasSwagger) {
       lines.push('')
@@ -106,7 +125,16 @@ export function generateSetupPs1(config: ProjectConfig): string {
     }
     lines.push('Copy-Item .env.example .env')
     lines.push('php artisan key:generate')
+    if (needsPassport)  lines.push('composer require laravel/passport --no-interaction')
     if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
+    if (needsBreeze) {
+      lines.push('composer require laravel/breeze --no-interaction')
+      lines.push('php artisan breeze:install api --no-interaction')
+    }
+    if (needsJetstream) {
+      lines.push('composer require laravel/jetstream --no-interaction')
+      lines.push('php artisan jetstream:install inertia --no-interaction')
+    }
     lines.push('php artisan migrate --force')
     lines.push('php artisan db:seed')
     if (hasSwagger) lines.push('php artisan l5-swagger:generate')
@@ -148,6 +176,9 @@ export function generateSetupBat(config: ProjectConfig): string {
   const needsInstallApi = isLaravelStack(stack)
     && (laravelAuth === 'sanctum' || laravelAuth === 'passport')
     && laravelVer >= 11
+  const needsPassport  = isLaravelStack(stack) && laravelAuth === 'passport'
+  const needsBreeze    = isLaravelStack(stack) && laravelAuth === 'breeze'
+  const needsJetstream = isLaravelStack(stack) && laravelAuth === 'jetstream'
   const hasSwagger = isLaravelStack(stack) && config.models.some(m => m.generate?.swagger)
   const lines: string[] = [
     '@echo off',
@@ -157,6 +188,11 @@ export function generateSetupBat(config: ProjectConfig): string {
 
   if (isLaravelStack(stack)) {
     lines.push('REM Backend — Laravel')
+    lines.push('REM Vider le cache bootstrap avant l\'installation (evite les conflits de providers)')
+    lines.push('if exist "bootstrap\\cache\\packages.php" del /q "bootstrap\\cache\\packages.php"')
+    lines.push('if exist "bootstrap\\cache\\services.php" del /q "bootstrap\\cache\\services.php"')
+    lines.push('if exist "bootstrap\\cache\\config.php"   del /q "bootstrap\\cache\\config.php"')
+    lines.push('if exist "bootstrap\\cache\\routes.php"   del /q "bootstrap\\cache\\routes.php"')
     lines.push('composer update --no-interaction')
     if (hasSwagger) {
       lines.push('')
@@ -167,7 +203,16 @@ export function generateSetupBat(config: ProjectConfig): string {
     }
     lines.push('copy .env.example .env')
     lines.push('php artisan key:generate')
+    if (needsPassport)  lines.push('composer require laravel/passport --no-interaction')
     if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
+    if (needsBreeze) {
+      lines.push('composer require laravel/breeze --no-interaction')
+      lines.push('php artisan breeze:install api --no-interaction')
+    }
+    if (needsJetstream) {
+      lines.push('composer require laravel/jetstream --no-interaction')
+      lines.push('php artisan jetstream:install inertia --no-interaction')
+    }
     lines.push('php artisan migrate --force')
     lines.push('php artisan db:seed')
     if (hasSwagger) lines.push('php artisan l5-swagger:generate')

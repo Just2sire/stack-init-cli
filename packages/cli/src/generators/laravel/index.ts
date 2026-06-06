@@ -9,6 +9,7 @@ import { type GeneratedFile } from '../../utils/fs'
 import { resolveTemplatesDir } from '../../utils/template-path'
 import { generateLaravelPlugins } from './plugins/index'
 import { sortModelsByDependency } from '../../utils/model-sort'
+import { hasArtisan, runArtisan } from '../../utils/artisan'
 
 const TEMPLATES_DIR = resolveTemplatesDir('laravel')
 
@@ -38,17 +39,40 @@ export class LaravelGenerator {
     const result: GeneratorResult = { files: [], warnings: [] }
     const laravelAuth    = config.laravel?.auth    ?? 'none'
     const laravelPattern = config.laravel?.pattern ?? 'api-only'
-    const sortedModels   = sortModelsByDependency(config.models)
+
+    // Migration order: pin Laravel-default-table models (users, etc.) first so FK-dependent
+    // migrations are never generated before their parent tables.
+    const sortedModels = sortModelsByDependency(config.models)
+    const defaultTableModels = sortedModels.filter(m => LARAVEL_DEFAULT_TABLES.has(modelToTableName(m.name)))
+    const customTableModels  = sortedModels.filter(m => !LARAVEL_DEFAULT_TABLES.has(modelToTableName(m.name)))
+    const orderedModels = [...defaultTableModels, ...customTableModels]
 
     // ── Phase 0 — Pre-flight: snapshot patchable files before any write ────────
     // Both api.php and DatabaseSeeder.php may already exist in the project and
     // need to be patched rather than overwritten.  Reading them here — before
     // any GeneratedFile is queued — ensures we always see the real on-disk state
     // regardless of what the generator will later emit.
-    const existingApi    = fs.existsSync(path.join(projectRoot, 'routes/api.php'))
+    let existingApi = fs.existsSync(path.join(projectRoot, 'routes/api.php'))
       ? fs.readFileSync(path.join(projectRoot, 'routes/api.php'),  'utf-8') : null
     const existingSeeder = fs.existsSync(path.join(projectRoot, 'database/seeders/DatabaseSeeder.php'))
       ? fs.readFileSync(path.join(projectRoot, 'database/seeders/DatabaseSeeder.php'), 'utf-8') : null
+
+    // Artisan integration: when a Laravel project is present (artisan file exists),
+    // delegate file creation to artisan where possible rather than writing stubs ourselves.
+    const artisanAvailable = hasArtisan(projectRoot)
+
+    // If routes/api.php doesn't exist yet and artisan is available, use `php artisan install:api`
+    // to create it (installs Sanctum + proper bootstrapping) instead of rendering our template.
+    // We re-read the file afterward so buildApiPhp() enters patch mode and injects our routes.
+    if (!existingApi && artisanAvailable && laravelPattern !== 'minimal') {
+      try {
+        await runArtisan(projectRoot, ['install:api', '--no-interaction'])
+        const apiPhpPath = path.join(projectRoot, 'routes/api.php')
+        if (fs.existsSync(apiPhpPath)) existingApi = fs.readFileSync(apiPhpPath, 'utf-8')
+      } catch {
+        result.warnings.push('php artisan install:api a échoué — routes/api.php sera généré depuis le template.')
+      }
+    }
 
     // ── Phase 1 — Infrastructure (no model dependencies) ──────────────────────
     result.files.push(this.generateEnvExample(config))
@@ -60,13 +84,29 @@ export class LaravelGenerator {
       result.files.push({ outputPath: 'app/Traits/ApiResponse.php', content: this.render('base/traits/ApiResponse.php.hbs', infraCtx) })
     }
 
-    // app:pattern artisan command — always generated so devs can add models post-scaffold
-    result.files.push({ outputPath: 'app/Console/Commands/Pattern.php', content: this.render('base/commands/Pattern.php.hbs', infraCtx) })
+    // app:pattern artisan command — always generated so devs can add models post-scaffold.
+    // When artisan is available, we first spawn `php artisan make:command Pattern --force`
+    // so Laravel creates the file in the correct location with the right namespace/attribute
+    // syntax for the installed version, then we overwrite it with our full implementation.
+    {
+      let patternSkipCheck = false
+      if (artisanAvailable) {
+        try {
+          await runArtisan(projectRoot, ['make:command', 'Pattern', '--force'])
+          patternSkipCheck = true
+        } catch {
+          result.warnings.push('php artisan make:command Pattern a échoué — Pattern.php généré depuis le template.')
+        }
+      }
+      result.files.push({
+        outputPath: 'app/Console/Commands/Pattern.php',
+        content: this.render('base/commands/Pattern.php.hbs', infraCtx),
+        skipOverwriteCheck: patternSkipCheck,
+      })
+    }
 
     const hasAnySwagger = config.models.some(m => m.generate.swagger)
     if (hasAnySwagger) {
-      result.files.push({ outputPath: 'config/l5-swagger.php',             content: this.generateSwaggerConfig(config) })
-      result.files.push({ outputPath: 'composer.json',                      content: this.generateComposerJson(config) })
       result.files.push({ outputPath: 'SWAGGER_SETUP.md',                  content: this.generateSwaggerGuideMd(config) })
       result.files.push({ outputPath: 'app/Http/Controllers/Controller.php', content: this.render('base/BaseController.php.hbs', infraCtx) })
       result.warnings.push('Swagger enabled: run "php artisan l5-swagger:generate" after "composer update" to generate the OpenAPI spec at /api/documentation.')
@@ -77,8 +117,8 @@ export class LaravelGenerator {
     // repository → actions → service → resource → collection → controller →
     // seeder → tests → observer → events/listeners.
     // The topological sort ensures FK parents are always processed first.
-    for (let i = 0; i < sortedModels.length; i++) {
-      const r = await this.generateModel(sortedModels[i], config, i, laravelPattern)
+    for (let i = 0; i < orderedModels.length; i++) {
+      const r = await this.generateModel(orderedModels[i], config, i, laravelPattern)
       result.files.push(...r.files)
       result.warnings.push(...r.warnings)
     }
@@ -98,7 +138,7 @@ export class LaravelGenerator {
     // Built after all controllers (model + auth) are determined.
     // Uses the Phase-0 snapshot to decide: patch existing file vs. generate fresh.
     // Both paths go through buildApiPhp() so the logic is never duplicated.
-    const modelsWithRoutes = sortedModels.filter(m => m.generate.routes)
+    const modelsWithRoutes = orderedModels.filter(m => m.generate.routes)
 
     if (laravelPattern === 'minimal') {
       if (modelsWithRoutes.length > 0) {
@@ -139,7 +179,7 @@ export class LaravelGenerator {
     // Individual *Seeder files were already emitted in Phase 2.
     // DatabaseSeeder is built here, after all seeders are known, so it can call
     // them in topological order.  Uses the Phase-0 snapshot via buildDatabaseSeeder().
-    const modelsWithSeeder = sortedModels.filter(m => m.generate.seeder)
+    const modelsWithSeeder = orderedModels.filter(m => m.generate.seeder)
     if (modelsWithSeeder.length > 0) {
       const seederNames = modelsWithSeeder.map(m => `${m.name}Seeder::class`)
       const seederCtx   = { seeders: seederNames, laravelOptions: config.laravel }
@@ -473,9 +513,13 @@ export class LaravelGenerator {
     const injectRoute = (content: string, route: string): string => {
       if (content.includes(route)) return content
       const marker = '// @stack-init-routes-end'
-      return content.includes(marker)
-        ? content.replace(marker, `${route}\n${marker}`)
-        : content.trimEnd() + `\n${route}\n`
+      if (content.includes(marker)) {
+        return content.replace(marker, `${route}\n${marker}`)
+      }
+      // No marker yet: add a visual separator so generated routes are clearly distinct
+      // from pre-existing routes, then plant the marker for idempotent future injections.
+      const separator = '\n// ─── routes générées par stack-init ─────────────────────────────────────'
+      return content.trimEnd() + `${separator}\n${route}\n${marker}\n`
     }
 
     // Fresh generation: render template with full context (handles auth + version natively)
@@ -835,7 +879,7 @@ php artisan l5-swagger:generate
 
 ## Fichier de configuration
 
-Le fichier \`config/l5-swagger.php\` a été généré. Les clés essentielles à adapter :
+Le fichier \`config/l5-swagger.php\` est créé automatiquement par \`vendor:publish\` (déjà exécuté via \`setup.sh\`). Les clés essentielles à adapter :
 
 \`\`\`php
 // Titre affiché dans Swagger UI
@@ -927,61 +971,6 @@ php artisan l5-swagger:generate
 # → http://localhost:8000/api/documentation
 \`\`\`
 `
-  }
-
-  private generateComposerJson(config: ProjectConfig): string {
-    const name     = config.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-    const laravelV = config.laravel?.laravel_version ?? '12'
-    const phpV     = config.laravel?.php_version ?? '8.4'
-    const hasSwagger = config.models.some(m => m.generate.swagger)
-    const auth       = config.laravel?.auth ?? 'sanctum'
-
-    const require: Record<string, string> = {
-      'php':              `>=${phpV}`,
-      'laravel/framework': `^${laravelV}.0`,
-      'laravel/tinker':   '^2.9',
-    }
-
-    if (auth === 'sanctum')  require['laravel/sanctum']  = '^4.0'
-    if (auth === 'passport') require['laravel/passport']  = '^12.0'
-    if (auth === 'breeze')   require['laravel/breeze']    = '^2.0'
-    if (auth === 'jetstream') require['laravel/jetstream'] = '^5.0'
-    if (hasSwagger)          require['darkaonline/l5-swagger'] = '^8.6'
-
-    const requireDev: Record<string, string> = {
-      'fakerphp/faker':                  '^1.23',
-      'laravel/pint':                    '^1.13',
-      'laravel/sail':                    '^1.26',
-      'mockery/mockery':                 '^1.6',
-      'nunomaduro/collision':            '^8.1',
-      'pestphp/pest':                    '^3.0',
-      'pestphp/pest-plugin-laravel':     '^3.0',
-    }
-
-    return JSON.stringify({
-      name:        `app/${name}`,
-      type:        'project',
-      description: `${config.name} — generated by stack-init`,
-      keywords:    ['laravel'],
-      license:     'MIT',
-      require,
-      'require-dev': requireDev,
-      autoload: {
-        'psr-4': { 'App\\': 'app/', 'Database\\Factories\\': 'database/factories/', 'Database\\Seeders\\': 'database/seeders/' },
-      },
-      'autoload-dev': {
-        'psr-4': { 'Tests\\': 'tests/' },
-      },
-      scripts: {
-        post_autoload_dump: ['Illuminate\\Foundation\\ComposerScripts::postAutoloadDump', '@php artisan package:discover --ansi'],
-        post_update_cmd:    ['@php artisan vendor:publish --tag=laravel-assets --ansi --force'],
-        post_create_project_cmd: ['@php artisan key:generate --ansi', '@php artisan storage:link'],
-      },
-      'extra': { 'laravel': { 'dont-discover': [] } },
-      config: { 'optimize-autoloader': true, 'preferred-install': 'dist', 'sort-packages': true, 'allow-plugins': { 'pestphp/pest-plugin': true, 'php-http/discovery': true } },
-      minimum_stability: 'stable',
-      prefer_stable: true,
-    }, null, 4)
   }
 
   private laravelAuthController(auth: string, config: ProjectConfig): string {

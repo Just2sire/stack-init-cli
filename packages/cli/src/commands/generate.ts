@@ -31,6 +31,7 @@ export interface GenerateOptions {
   config: string
   output: string
   dryRun: boolean
+  force: boolean
 }
 
 export async function runGenerate(opts: GenerateOptions): Promise<void> {
@@ -308,7 +309,7 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
       .map(f => f.outputPath)
   )
 
-  await writeFiles(allGeneratedFiles, projectRoot, opts.dryRun)
+  await writeFiles(allGeneratedFiles, projectRoot, opts.dryRun, opts.force)
   manifestFiles.push(...allGeneratedFiles
     .filter(f => !preExistingPaths.has(f.outputPath))
     .map(f => f.outputPath)

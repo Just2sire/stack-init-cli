@@ -486,7 +486,7 @@ function buildInstallSection(config: ProjectConfig, mixed: boolean): string[] {
     lines.push('|---------|---------|---------|')
     lines.push('| `darkaonline/l5-swagger` | ^8.6 | Documentation API OpenAPI / Swagger UI |')
     lines.push('')
-    lines.push('> Ces packages sont déjà dans `composer.json` et installés automatiquement par `setup.sh`.')
+    lines.push('> Ces packages sont installés automatiquement par `setup.sh` via `composer require`.')
     lines.push('> La documentation Swagger sera disponible sur → **http://localhost:8000/api/documentation**')
     lines.push('> Consulter `SWAGGER_SETUP.md` pour la configuration détaillée.')
     lines.push('')

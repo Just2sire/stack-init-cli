@@ -19,8 +19,9 @@ program
   .option('-c, --config <path>', 'Chemin vers stack-init.yaml', 'stack-init.yaml')
   .option('-o, --output <path>', 'Racine du projet cible',      '.')
   .option('--dry-run',           'Affiche les fichiers sans écrire', false)
+  .option('--force',             'Écraser les fichiers existants sans confirmation', false)
   .action(async (opts) => {
-    await runGenerate({ config: opts.config, output: opts.output, dryRun: opts.dryRun })
+    await runGenerate({ config: opts.config, output: opts.output, dryRun: opts.dryRun, force: opts.force })
   })
 
 program

@@ -9,5 +9,5 @@ export interface DiffOptions {
 export async function runDiff(opts: DiffOptions): Promise<void> {
   console.log(pc.cyan('\n  stack-init diff — fichiers qui seraient générés\n'))
   console.log(pc.dim('  (Aucun fichier ne sera écrit)\n'))
-  await runGenerate({ config: opts.config, output: opts.output, dryRun: true })
+  await runGenerate({ config: opts.config, output: opts.output, dryRun: true, force: false })
 }

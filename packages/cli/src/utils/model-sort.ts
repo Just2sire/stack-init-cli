@@ -14,7 +14,7 @@ export function sortModelsByDependency(models: Model[]): Model[] {
   if (models.length <= 1) return models
 
   const byName  = new Map<string, Model>(models.map(m => [m.name,  m]))
-  const byTable = new Map<string, Model>(models.map(m => [m.table, m]))
+  const byTable = new Map<string, Model>(models.map(m => [m.table ?? '', m]))
 
   // deps[A] = set of model names that A depends on (must be generated before A)
   const deps = new Map<string, Set<string>>(models.map(m => [m.name, new Set()]))
