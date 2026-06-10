@@ -55,14 +55,23 @@ stack-init generate
 ### Commandes disponibles
 
 ```bash
-# Génère tous les fichiers depuis stack-init.yaml
-stack-init generate
+# ── Nouveau projet depuis le terminal (wizard interactif ou flags) ──────────
+stack-init init                              # wizard complet
+stack-init init my-app --preset pern        # nom + preset prédéfini
+stack-init init my-app --preset pern --yes  # 100% non-interactif
+stack-init init my-api --stack fastapi --yes --no-generate  # YAML seulement
 
-# Options de generate
+# Via npx (sans installation globale)
+npx create-stack-init
+npx create-stack-init my-app --preset laravel-api --yes
+
+# ── Génération depuis un stack-init.yaml ─────────────────────────────────────
+stack-init generate
 stack-init generate --config ./chemin/vers/stack-init.yaml   # Chemin custom
 stack-init generate --output ./mon-projet                    # Dossier de sortie custom
 stack-init generate --dry-run                                # Aperçu sans écriture sur disque
 
+# ── Autres commandes ─────────────────────────────────────────────────────────
 # Ajoute un nouveau modèle à un projet existant
 stack-init add
 
@@ -568,7 +577,7 @@ pnpm test -- field-helpers  # Tests d'un fichier spécifique
 | `js-yaml` | v4 | Lecture/écriture YAML |
 | `handlebars` | v4 | Moteur de templates |
 | `adm-zip` | v0.5 | Création d'archives ZIP |
-| `ora` | v5 | Spinner de progression terminal |
+| `@clack/prompts` | v1.5 | Prompts interactifs pour la commande `init` |
 | `picocolors` | v1 | Couleurs dans le terminal |
 | `zod` | v3.23 | Validation du schéma YAML |
 

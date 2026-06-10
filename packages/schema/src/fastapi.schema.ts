@@ -34,7 +34,7 @@ export const FastAPIConfigSchema = z.object({
   background_tasks: z.boolean().default(false),
   websockets:     z.boolean().default(false),
   runner:         z.enum(['makefile', 'bash', 'none']).default('makefile'),
-  python_version: z.enum(['3.10', '3.11', '3.12']).default('3.11'),
+  python_version: z.enum(['3.10', '3.11', '3.12', '3.13']).default('3.12'),
   async_mode:     z.boolean().default(true),
 });
 

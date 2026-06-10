@@ -8,6 +8,8 @@ export interface GeneratedFile {
   content: string
   /** When true, skip the overwrite-confirmation prompt for this file (e.g. artisan just created it). */
   skipOverwriteCheck?: boolean
+  /** The name of the model this file belongs to (for grouped summary display). */
+  model?: string
 }
 
 // Files whose content is patched (not replaced wholesale) — no overwrite warning needed.

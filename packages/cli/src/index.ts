@@ -5,6 +5,7 @@ import { runRollback } from './commands/rollback'
 import { runValidate } from './commands/validate'
 import { runDiff } from './commands/diff'
 import { runUpdateVersions } from './commands/update-versions'
+import { runInit } from './commands/init'
 
 const program = new Command()
 
@@ -71,6 +72,25 @@ program
   .description('Récupère les dernières versions depuis npm, packagist et PyPI')
   .action(async () => {
     await runUpdateVersions()
+  })
+
+program
+  .command('init [name]')
+  .description('Crée un nouveau projet — interactivement ou via flags (--preset, --yes…)')
+  .option('-p, --preset <key>',  'Preset prédéfini (pern, mern, laravel-api…) — saute la sélection de stack')
+  .option('-s, --stack <stack>', 'Stack brut sans wizard (laravel, express+react…)')
+  .option('-y, --yes',           'Accepter tous les défauts sans prompt interactif')
+  .option('-o, --output <path>', 'Répertoire de destination du projet')
+  .option('--no-generate',       'Sauvegarder le YAML seulement, ne pas générer')
+  .action(async (name, opts) => {
+    await runInit({
+      name,
+      preset:   opts.preset,
+      stack:    opts.stack,
+      yes:      opts.yes     ?? false,
+      generate: opts.generate ?? true,
+      output:   opts.output,
+    })
   })
 
 program.parse()

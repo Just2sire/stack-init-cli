@@ -34,29 +34,13 @@ export interface GenerateOptions {
   force: boolean
 }
 
-export async function runGenerate(opts: GenerateOptions): Promise<void> {
-  // 1. Lecture YAML
-  const configPath = resolveConfigPath(opts.config)
-  const raw = yaml.load(fs.readFileSync(configPath, 'utf-8'))
+export interface GenerateFromConfigOptions {
+  output: string
+  dryRun: boolean
+  force: boolean
+}
 
-  // 2. Validation Zod
-  const parsed = parseProjectConfig(raw)
-  if (!parsed.success) {
-    console.error(pc.red(`\n  ✗ stack-init.yaml invalide — ${parsed.errors.length} erreur(s) :\n`))
-    parsed.errors.forEach((e, i) => {
-      // Try to detect the field path from common Zod error patterns
-      const fieldMatch = e.match(/^([a-z_.[\]0-9]+):\s*(.+)$/i)
-      if (fieldMatch) {
-        console.error(`  ${pc.red(`${i + 1}.`)} ${pc.yellow(fieldMatch[1])} — ${fieldMatch[2]}`)
-      } else {
-        console.error(`  ${pc.red(`${i + 1}.`)} ${e}`)
-      }
-    })
-    console.error(pc.dim('\n  Astuce : lancez "stack-init validate" pour une analyse détaillée.\n'))
-    process.exit(1)
-  }
-
-  const config: ProjectConfig = parsed.data
+export async function generateFromConfig(config: ProjectConfig, opts: GenerateFromConfigOptions): Promise<void> {
   const projectRoot = path.resolve(opts.output)
   const isMixed = isMixedStack(config.stack)
 
@@ -91,17 +75,13 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
   
   // -- Laravel --
   if (config.stack.includes('laravel')) {
-    console.log(pc.bold('  Laravel'))
     const generator = new LaravelGenerator()
     const result    = await generator.generate(config, projectRoot)
-    // Laravel is always at root — even in mixed stacks it's the primary framework.
-    // The frontend stack gets its own 'frontend/' subfolder.
     const subfolder = '.'
     
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     const files = result.files.map(f => ({ ...f, outputPath: path.join(subfolder, f.outputPath) }))
     allGeneratedFiles.push(...files)
-    files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
 
     // Runner spécifique Laravel si pas mixed
     if (!isMixed) {
@@ -109,11 +89,9 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
       if (runner !== 'none') {
         if (['makefile', 'both'].includes(runner)) {
           allGeneratedFiles.push({ outputPath: 'Makefile', content: generateMakefile(config) })
-          console.log(`  ${pc.green('✓')} Makefile`)
         }
         if (['bash', 'both'].includes(runner)) {
           allGeneratedFiles.push({ outputPath: 'run.sh', content: generateBashRunner(config) })
-          console.log(`  ${pc.green('✓')} run.sh`)
         }
       }
     }
@@ -121,7 +99,6 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
 
   // -- Express --
   if (config.stack.includes('express')) {
-    console.log(pc.bold('  Express'))
     const generator = new ExpressGenerator()
     const result    = await generator.generate(config, projectRoot)
     const subfolder = isMixed ? 'backend' : '.'
@@ -129,12 +106,10 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     const files = result.files.map(f => ({ ...f, outputPath: path.join(subfolder, f.outputPath) }))
     allGeneratedFiles.push(...files)
-    files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
   // -- NestJS --
   if (config.stack.includes('nestjs')) {
-    console.log(pc.bold('  NestJS'))
     const generator = new NestGenerator()
     const result    = await generator.generate(config, projectRoot)
     const subfolder = isMixed ? 'backend' : '.'
@@ -142,12 +117,10 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     const files = result.files.map(f => ({ ...f, outputPath: path.join(subfolder, f.outputPath) }))
     allGeneratedFiles.push(...files)
-    files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
   // -- FastAPI --
   if (config.stack.includes('fastapi')) {
-    console.log(pc.bold('  FastAPI'))
     const generator = new FastAPIGenerator()
     const result    = await generator.generate(config, projectRoot)
     const subfolder = isMixed ? 'backend' : '.'
@@ -155,22 +128,18 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     const files = result.files.map(f => ({ ...f, outputPath: path.join(subfolder, f.outputPath) }))
     allGeneratedFiles.push(...files)
-    files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
   // -- Django --
   if (config.stack === 'django') {
-    console.log(pc.bold('  Django'))
     const generator = new DjangoGenerator()
     const result    = await generator.generate(config, projectRoot)
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     allGeneratedFiles.push(...result.files)
-    result.files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
   // -- Next.js (model-aware generator) --
   if (config.stack.includes('nextjs')) {
-    console.log(pc.bold('  Next.js'))
     const generator = new NextJSGenerator()
     const result    = await generator.generate(config, projectRoot)
     const subfolder = isMixed ? 'frontend' : '.'
@@ -178,12 +147,10 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     const files = result.files.map(f => ({ ...f, outputPath: path.join(subfolder, f.outputPath) }))
     allGeneratedFiles.push(...files)
-    files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
   // -- React SPA (Vite) --
   if (config.stack.includes('react') && !config.stack.includes('nextjs') && config.stack !== 'mevn') {
-    console.log(pc.bold('  React (Vite)'))
     const generator = new ReactGenerator()
     const result    = await generator.generate(config, projectRoot)
     const subfolder = isMixed ? 'frontend' : '.'
@@ -191,22 +158,18 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     const files = result.files.map(f => ({ ...f, outputPath: path.join(subfolder, f.outputPath) }))
     allGeneratedFiles.push(...files)
-    files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
   // -- T3 Stack (Next.js + tRPC + Prisma + Tailwind) --
   if (config.stack === 't3') {
-    console.log(pc.bold('  T3 Stack'))
     const generator = new T3Generator()
     const result    = await generator.generate(config, projectRoot)
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     allGeneratedFiles.push(...result.files)
-    result.files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
   // -- Vue 3 (Vite) — used for MEVN stack --
   if (config.stack === 'mevn') {
-    console.log(pc.bold('  Vue 3 (Vite)'))
     const generator = new VueGenerator()
     const result    = await generator.generate(config, projectRoot)
     const subfolder = 'frontend'
@@ -214,7 +177,6 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     result.warnings.forEach(w => console.warn(pc.yellow(`  ⚠  ${w}`)))
     const files = result.files.map(f => ({ ...f, outputPath: path.join(subfolder, f.outputPath) }))
     allGeneratedFiles.push(...files)
-    files.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
   // 4. Orchestration Globale (Makefile & Docker racine pour multi-stack)
@@ -250,54 +212,37 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
     makefileContent += `\t-pkill -f "npm run dev" 2>/dev/null || true\n`
 
     allGeneratedFiles.push({ outputPath: 'Makefile', content: makefileContent })
-    console.log(`  ${pc.green('✓')} Makefile (global)`)
-
   }
 
   // Docker files (compose + Dockerfiles + .dockerignore)
-  console.log(pc.bold('  Docker'))
   const dockerFiles = generateDockerFiles(config, isMixed)
   allGeneratedFiles.push(...dockerFiles)
-  dockerFiles.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
 
 
   // 5a. GitHub Actions CI/CD
-  console.log(pc.bold('  CI/CD'))
   const ciFiles = generateCICD(config)
   allGeneratedFiles.push(...ciFiles)
-  ciFiles.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
 
   // 5. Scripts cross-platform (setup + dev) + GETTING_STARTED.md
   allGeneratedFiles.push({ outputPath: 'setup.sh',  content: generateSetupSh(config) })
   allGeneratedFiles.push({ outputPath: 'setup.ps1', content: generateSetupPs1(config) })
   allGeneratedFiles.push({ outputPath: 'setup.bat', content: generateSetupBat(config) })
   allGeneratedFiles.push({ outputPath: 'GETTING_STARTED.md', content: buildGettingStartedMd(config) })
-  console.log(`  ${pc.green('✓')} setup.sh / setup.ps1 / setup.bat`)
-  console.log(`  ${pc.green('✓')} GETTING_STARTED.md`)
   if (isMixed) {
     allGeneratedFiles.push({ outputPath: 'dev.sh',  content: generateDevSh(config) })
     allGeneratedFiles.push({ outputPath: 'dev.ps1', content: generateDevPs1(config) })
     allGeneratedFiles.push({ outputPath: 'dev.bat', content: generateDevBat(config) })
-    console.log(`  ${pc.green('✓')} dev.sh / dev.ps1 / dev.bat`)
   }
 
   // 6. Services additionnels (email, cache, queue, file-upload, websockets)
   const services = (config.services ?? []) as ServiceId[]
   if (services.length > 0) {
-    console.log(pc.bold('  Services'))
-    const before = allGeneratedFiles.length
     generateServices(config, services, allGeneratedFiles)
-    const added = allGeneratedFiles.slice(before)
-    added.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
   // Frontend API client for mixed stacks
   if (isMixed && (config.stack.includes('react') || config.stack.includes('nextjs'))) {
-    console.log(pc.bold('  Frontend API client'))
-    const before = allGeneratedFiles.length
     generateFrontendApi(config, allGeneratedFiles)
-    const added = allGeneratedFiles.slice(before)
-    added.forEach(f => console.log(`  ${pc.green('✓')} ${f.outputPath}`))
   }
 
   // 7. Écriture des fichiers
@@ -325,9 +270,52 @@ export async function runGenerate(opts: GenerateOptions): Promise<void> {
   }
 
   if (!opts.dryRun) {
+    // Redesigned summary display
+    console.log(pc.bold(pc.cyan('\n  Résumé de la génération\n')))
+
+    const infraFiles = allGeneratedFiles.filter(f => !f.model)
+    if (infraFiles.length > 0) {
+      console.log(`  ${pc.bold('Infrastructure')}`)
+      infraFiles.forEach(f => console.log(`    ${pc.green('✓')} ${pc.dim(f.outputPath)}`))
+      console.log(`  ${pc.dim('─'.repeat(40))}`)
+    }
+
+    const models = Array.from(new Set(allGeneratedFiles.filter(f => f.model).map(f => f.model!)))
+    for (const modelName of models) {
+      const modelFiles = allGeneratedFiles.filter(f => f.model === modelName)
+      console.log(`  ${pc.bold(pc.blue(modelName))}`)
+      modelFiles.forEach(f => console.log(`    ${pc.green('✓')} ${pc.dim(f.outputPath)}`))
+      console.log(`  ${pc.dim('─'.repeat(40))}`)
+    }
+
     buildTerminalSummary(config, opts.output)
   } else {
     console.log(pc.bold(pc.green('\n  ✓ Dry-run terminé — aucun fichier écrit\n')))
   }
 }
 
+export async function runGenerate(opts: GenerateOptions): Promise<void> {
+  const configPath = resolveConfigPath(opts.config)
+  const raw = yaml.load(fs.readFileSync(configPath, 'utf-8'))
+
+  const parsed = parseProjectConfig(raw)
+  if (!parsed.success) {
+    console.error(pc.red(`\n  ✗ stack-init.yaml invalide — ${parsed.errors.length} erreur(s) :\n`))
+    parsed.errors.forEach((e, i) => {
+      const fieldMatch = e.match(/^([a-z_.[\]0-9]+):\s*(.+)$/i)
+      if (fieldMatch) {
+        console.error(`  ${pc.red(`${i + 1}.`)} ${pc.yellow(fieldMatch[1])} — ${fieldMatch[2]}`)
+      } else {
+        console.error(`  ${pc.red(`${i + 1}.`)} ${e}`)
+      }
+    })
+    console.error(pc.dim('\n  Astuce : lancez "stack-init validate" pour une analyse détaillée.\n'))
+    process.exit(1)
+  }
+
+  await generateFromConfig(parsed.data, {
+    output: opts.output,
+    dryRun: opts.dryRun,
+    force: opts.force,
+  })
+}

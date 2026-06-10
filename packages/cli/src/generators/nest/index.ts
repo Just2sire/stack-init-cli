@@ -35,21 +35,23 @@ export class NestGenerator {
 
     const sortedModels = sortModelsByDependency(config.models)
 
-    // Generate modules for each model
+    // Generate each model's module
     for (const model of sortedModels) {
-      const modelResult = this.generateModelModule(model, config)
-      result.files.push(...modelResult.files)
-      result.warnings.push(...modelResult.warnings)
+      const moduleResult = this.generateModelModule(model, config)
+      result.files.push(...moduleResult.files.map(f => ({ ...f, model: model.name })))
+      result.warnings.push(...moduleResult.warnings)
     }
 
     // Auth module generation
     if (auth !== 'none') {
-      const hasUserModel = config.models.some(m => m.name.toLowerCase() === 'user')
-      if (!hasUserModel) {
-        result.warnings.push('Auth is enabled but no "User" model found. The AuthService references a User entity — add one or adjust auth files manually.')
+      const userModel = config.models.find(m => m.name.toLowerCase() === 'user')
+      if (!userModel) {
+        result.warnings.push('Auth is enabled but no "User" model found. The auth module references a User model — add one or adjust manually.')
       }
-      result.files.push(...this.generateAuthModule(config))
+      const authFiles = this.generateAuthModule(config)
+      result.files.push(...authFiles.map(f => ({ ...f, model: userModel?.name ?? 'User' })))
     }
+
 
     // .env.example
     result.files.push(this.generateEnvExample(config))

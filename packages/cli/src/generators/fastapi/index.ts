@@ -133,23 +133,23 @@ export class FastAPIGenerator {
       if (architecture === 'flat') {
         flatModelParts.push(modelContent)
       } else if (architecture === 'layered') {
-        result.files.push({ outputPath: `app/models/${mSnake}.py`,   content: modelContent })
-        result.files.push({ outputPath: `app/services/${mSnake}.py`, content: generateService(model, orm, asyncMode, `app.models.${mSnake}`) })
+        result.files.push({ outputPath: `app/models/${mSnake}.py`,   content: modelContent, model: model.name })
+        result.files.push({ outputPath: `app/services/${mSnake}.py`, content: generateService(model, orm, asyncMode, `app.models.${mSnake}`), model: model.name })
         if (canRoute)
-          result.files.push({ outputPath: `app/routers/${mSnake}.py`, content: generateRouter(model, orm, asyncMode, `app.models.${mSnake}`, useBgTasks, useRateLimiting) })
+          result.files.push({ outputPath: `app/routers/${mSnake}.py`, content: generateRouter(model, orm, asyncMode, `app.models.${mSnake}`, useBgTasks, useRateLimiting), model: model.name })
       } else if (architecture === 'feature-based') {
-        result.files.push({ outputPath: `app/features/${mSnake}/__init__.py`, content: '' })
-        result.files.push({ outputPath: `app/features/${mSnake}/models.py`,   content: modelContent })
-        result.files.push({ outputPath: `app/features/${mSnake}/service.py`,  content: generateService(model, orm, asyncMode, `app.features.${mSnake}.models`) })
+        result.files.push({ outputPath: `app/features/${mSnake}/__init__.py`, content: '', model: model.name })
+        result.files.push({ outputPath: `app/features/${mSnake}/models.py`,   content: modelContent, model: model.name })
+        result.files.push({ outputPath: `app/features/${mSnake}/service.py`,  content: generateService(model, orm, asyncMode, `app.features.${mSnake}.models`), model: model.name })
         if (canRoute)
-          result.files.push({ outputPath: `app/features/${mSnake}/router.py`, content: generateRouter(model, orm, asyncMode, `app.features.${mSnake}.models`, useBgTasks, useRateLimiting) })
+          result.files.push({ outputPath: `app/features/${mSnake}/router.py`, content: generateRouter(model, orm, asyncMode, `app.features.${mSnake}.models`, useBgTasks, useRateLimiting), model: model.name })
       } else { // domain
-        result.files.push({ outputPath: `app/domain/${mSnake}/__init__.py`, content: '' })
-        result.files.push({ outputPath: `app/api/${mSnake}/__init__.py`,    content: '' })
-        result.files.push({ outputPath: `app/domain/${mSnake}/entity.py`,   content: modelContent })
-        result.files.push({ outputPath: `app/domain/${mSnake}/service.py`,  content: generateService(model, orm, asyncMode, `app.domain.${mSnake}.entity`) })
+        result.files.push({ outputPath: `app/domain/${mSnake}/__init__.py`, content: '', model: model.name })
+        result.files.push({ outputPath: `app/api/${mSnake}/__init__.py`,    content: '', model: model.name })
+        result.files.push({ outputPath: `app/domain/${mSnake}/entity.py`,   content: modelContent, model: model.name })
+        result.files.push({ outputPath: `app/domain/${mSnake}/service.py`,  content: generateService(model, orm, asyncMode, `app.domain.${mSnake}.entity`), model: model.name })
         if (canRoute)
-          result.files.push({ outputPath: `app/api/${mSnake}/router.py`, content: generateRouter(model, orm, asyncMode, `app.domain.${mSnake}.entity`, useBgTasks, useRateLimiting) })
+          result.files.push({ outputPath: `app/api/${mSnake}/router.py`, content: generateRouter(model, orm, asyncMode, `app.domain.${mSnake}.entity`, useBgTasks, useRateLimiting), model: model.name })
       }
     }
 
@@ -162,15 +162,15 @@ export class FastAPIGenerator {
 
     // Auth
     if (auth !== 'none') {
-      const hasUser = config.models.some(m => m.name.toLowerCase() === 'user')
-      if (!hasUser)
+      const userModel = config.models.find(m => m.name.toLowerCase() === 'user')
+      if (!userModel)
         result.warnings.push('Auth is enabled but no "User" model found. Add one or adjust auth files manually.')
-      if (!useRateLimiting) result.files.push({ outputPath: 'app/core/__init__.py', content: '' })
-      result.files.push({ outputPath: 'app/core/security.py', content: generateAuthSecurity() })
-      result.files.push({ outputPath: 'app/dependencies.py',  content: generateDependencies(orm) })
-      result.files.push({ outputPath: 'app/routers/auth.py',  content: generateAuthRouter(orm, asyncMode) })
+      if (!useRateLimiting) result.files.push({ outputPath: 'app/core/__init__.py', content: '', model: userModel?.name ?? 'User' })
+      result.files.push({ outputPath: 'app/core/security.py', content: generateAuthSecurity(), model: userModel?.name ?? 'User' })
+      result.files.push({ outputPath: 'app/dependencies.py',  content: generateDependencies(orm), model: userModel?.name ?? 'User' })
+      result.files.push({ outputPath: 'app/routers/auth.py',  content: generateAuthRouter(orm, asyncMode), model: userModel?.name ?? 'User' })
       if (architecture !== 'layered')
-        result.files.push({ outputPath: 'app/routers/__init__.py', content: '' })
+        result.files.push({ outputPath: 'app/routers/__init__.py', content: '', model: userModel?.name ?? 'User' })
     }
 
     // Alembic

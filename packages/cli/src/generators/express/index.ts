@@ -62,7 +62,7 @@ export class ExpressGenerator {
     // Generate layers for each model
     for (const model of sortedModels) {
       const modelResult = this.generateModelLayers(model, config)
-      result.files.push(...modelResult.files)
+      result.files.push(...modelResult.files.map(f => ({ ...f, model: model.name })))
       result.warnings.push(...modelResult.warnings)
 
       const ctx = this.buildContext(model, config)
@@ -70,32 +70,36 @@ export class ExpressGenerator {
       if (orm === 'mongoose') {
         result.files.push({
           outputPath: `src/models/${model.name.toLowerCase()}.model.ts`,
-          content: this.render('overlays/mongoose/model.ts.hbs', ctx)
+          content: this.render('overlays/mongoose/model.ts.hbs', ctx),
+          model: model.name
         })
       }
 
       if (orm === 'sequelize') {
         result.files.push({
           outputPath: `src/models/${model.name.toLowerCase()}.model.ts`,
-          content: this.generateSequelizeModel(model)
+          content: this.generateSequelizeModel(model),
+          model: model.name
         })
       }
 
       if (orm === 'typeorm') {
         result.files.push({
           outputPath: `src/entities/${pascalCase(model.name)}.entity.ts`,
-          content: this.generateTypeOrmEntity(model)
+          content: this.generateTypeOrmEntity(model),
+          model: model.name
         })
       }
     }
 
     // Auth service generation
     if (auth !== 'none') {
-      const hasUserModel = config.models.some(m => m.name.toLowerCase() === 'user')
-      if (!hasUserModel) {
+      const userModel = config.models.find(m => m.name.toLowerCase() === 'user')
+      if (!userModel) {
         result.warnings.push('Auth is enabled but no "User" model found. The auth service references a User model — add one or adjust auth.service.ts manually.')
       }
-      result.files.push(...this.generateAuthFiles(config))
+      const authFiles = this.generateAuthFiles(config)
+      result.files.push(...authFiles.map(f => ({ ...f, model: userModel?.name ?? 'User' })))
     }
 
     // .env.example

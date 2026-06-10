@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import Handlebars from 'handlebars'
+import pc from 'picocolors'
 import type { Model, ProjectConfig } from '@stack-init/schema'
 import { configureHandlebars } from './handlebars'
 import { fieldToCast, fieldToValidationRule, fieldToFaker, fieldToSwaggerType } from '../../utils/field-helpers'
@@ -16,12 +17,20 @@ const TEMPLATES_DIR = resolveTemplatesDir('laravel')
 // Tables créées par les migrations par défaut de Laravel — on évite de régénérer Schema::create
 const LARAVEL_DEFAULT_TABLES = new Set([
   'users', 'password_reset_tokens', 'failed_jobs', 'personal_access_tokens',
+  'sessions', 'cache', 'cache_locks', 'jobs', 'job_batches',
 ])
 
 // Champs déjà présents dans ces migrations par défaut
 const LARAVEL_DEFAULT_FIELDS: Record<string, Set<string>> = {
   users:                  new Set(['name', 'email', 'email_verified_at', 'password', 'remember_token']),
-  password_reset_tokens:  new Set(['email', 'token']),
+  password_reset_tokens:  new Set(['email', 'token', 'created_at']),
+  sessions:               new Set(['id', 'user_id', 'ip_address', 'user_agent', 'payload', 'last_activity']),
+  cache:                  new Set(['key', 'value', 'expiration']),
+  cache_locks:            new Set(['key', 'owner', 'expiration']),
+  jobs:                   new Set(['id', 'queue', 'payload', 'attempts', 'reserved_at', 'available_at', 'created_at']),
+  job_batches:            new Set(['id', 'name', 'total_jobs', 'pending_jobs', 'failed_jobs', 'failed_job_ids', 'options', 'cancelled_at', 'created_at', 'finished_at']),
+  failed_jobs:            new Set(['id', 'uuid', 'connection', 'queue', 'payload', 'exception', 'failed_at']),
+  personal_access_tokens: new Set(['id', 'tokenable_type', 'tokenable_id', 'name', 'token', 'abilities', 'last_used_at', 'expires_at', 'created_at', 'updated_at']),
 }
 
 export interface GeneratorResult {
@@ -345,7 +354,10 @@ export class LaravelGenerator {
       }
     }
 
-    return { files, warnings }
+    return {
+      files: files.map(f => ({ ...f, model: model.name })),
+      warnings,
+    }
   }
 
   private buildContext(model: Model, config: ProjectConfig): Record<string, unknown> {

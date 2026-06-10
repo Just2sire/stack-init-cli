@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-09
+
+### Added
+- Commande `stack-init init` : wizard interactif terminal (comme `create-next-app`)
+- Flags non-interactifs sur `init` : argument positionnel `[name]`, `--preset/-p`, `--stack/-s`, `--yes/-y`, `--no-generate`
+- Bin `create-stack-init` dans `package.json` → `npx create-stack-init` fonctionne
+- Wizard Custom : questions spécifiques par framework (ORM, DB, auth, validation, swagger…)
+- Nouvelles options dans le wizard : `validation` (Express), `swagger` (Express/NestJS confirmable), `python_version` (FastAPI), `php_version` + `laravel_version` (Laravel), `router` + `form_lib` (React)
+- Support de Python 3.13 dans le schéma FastAPI (`python_version`)
+
+### Fixed
+- `setup.bat` : ajout de `setlocal EnableExtensions`, labels de progression `[1/6]…[6/6]`, `if errorlevel 1 goto :error` après chaque commande critique, labels `:error` + `:end`, `copy /Y`, `pushd`/`popd` pour les changements de répertoire
+- Générateur Laravel : affichage d'une ligne `→ php artisan <cmd>` avant chaque appel artisan silencieux
+
 ## [0.2.0] - 2026-06-01
 
 ### Added

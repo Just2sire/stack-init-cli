@@ -142,53 +142,60 @@ export class NextJSGenerator {
       // TypeScript interface
       result.files.push({
         outputPath: `src/types/${model.name}.ts`,
-        content: this.generateTypeFile(model)
+        content: this.generateTypeFile(model),
+        model: model.name
       })
 
       // API routes
       result.files.push({
         outputPath: `src/app/api/${slug}/route.ts`,
-        content: this.generateApiRoute(mLow)
+        content: this.generateApiRoute(mLow),
+        model: model.name
       })
       result.files.push({
         outputPath: `src/app/api/${slug}/[id]/route.ts`,
-        content: this.generateApiIdRoute(mLow)
+        content: this.generateApiIdRoute(mLow),
+        model: model.name
       })
 
       // List page
       result.files.push({
         outputPath: `src/app/${slug}/page.tsx`,
-        content: this.generateListPage(model, slug, uiLib)
+        content: this.generateListPage(model, slug, uiLib),
+        model: model.name
       })
 
       // Detail page
       result.files.push({
         outputPath: `src/app/${slug}/[id]/page.tsx`,
-        content: this.generateDetailPage(model, slug)
+        content: this.generateDetailPage(model, slug),
+        model: model.name
       })
 
       // Create page
       result.files.push({
         outputPath: `src/app/${slug}/new/page.tsx`,
-        content: this.generateCreatePage(model, slug, opts)
+        content: this.generateCreatePage(model, slug, opts),
+        model: model.name
       })
 
       // Edit page
       result.files.push({
         outputPath: `src/app/${slug}/[id]/edit/page.tsx`,
-        content: this.generateEditPage(model, slug, opts)
+        content: this.generateEditPage(model, slug, opts),
+        model: model.name
       })
 
       // Zod validation schema
       if (formLib === 'zod') {
-        result.files.push({ outputPath: `src/schemas/${model.name}.schema.ts`, content: this.generateZodSchema(model) })
+        result.files.push({ outputPath: `src/schemas/${model.name}.schema.ts`, content: this.generateZodSchema(model), model: model.name })
       }
 
       // Data fetching hooks
       if (dataFetching === 'tanstack-query') {
-        result.files.push({ outputPath: `src/hooks/use${model.name}.ts`, content: this.generateTanstackHook(model, slug) })
+        result.files.push({ outputPath: `src/hooks/use${model.name}.ts`, content: this.generateTanstackHook(model, slug), model: model.name })
       } else if (dataFetching === 'swr') {
-        result.files.push({ outputPath: `src/hooks/use${model.name}.ts`, content: this.generateSWRHook(model, slug) })
+        result.files.push({ outputPath: `src/hooks/use${model.name}.ts`, content: this.generateSWRHook(model, slug), model: model.name })
       }
     }
 

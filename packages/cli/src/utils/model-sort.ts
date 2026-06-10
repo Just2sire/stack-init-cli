@@ -36,22 +36,46 @@ export function sortModelsByDependency(models: Model[]): Model[] {
   // Kahn's algorithm
   const inDegree = new Map<string, number>(models.map(m => [m.name, 0]))
   const revDeps  = new Map<string, string[]>(models.map(m => [m.name, []]))
+  const outDegree = new Map<string, number>(models.map(m => [m.name, 0]))
+
   for (const [name, depSet] of deps) {
     for (const dep of depSet) {
       inDegree.set(name, (inDegree.get(name) ?? 0) + 1)
       revDeps.get(dep)!.push(name)
+      outDegree.set(dep, (outDegree.get(dep) ?? 0) + 1)
     }
   }
 
-  const queue = models.filter(m => inDegree.get(m.name) === 0).map(m => m.name)
+  const SYSTEM_MODELS = new Set(['User', 'Role', 'Permission', 'Team'])
+
+  const getPriority = (m: Model) => {
+    if (SYSTEM_MODELS.has(m.name)) return 1000
+    return outDegree.get(m.name) ?? 0
+  }
+
+  const queue = models
+    .filter(m => inDegree.get(m.name) === 0)
+    .sort((a, b) => getPriority(b) - getPriority(a) || a.name.localeCompare(b.name))
+    .map(m => m.name)
+
   const sorted: Model[] = []
   while (queue.length > 0) {
     const name = queue.shift()!
-    sorted.push(byName.get(name)!)
+    const model = byName.get(name)!
+    sorted.push(model)
+
     for (const dep of revDeps.get(name) ?? []) {
       const d = (inDegree.get(dep) ?? 1) - 1
       inDegree.set(dep, d)
-      if (d === 0) queue.push(dep)
+      if (d === 0) {
+        queue.push(dep)
+        // Re-sort queue to maintain priority for newly added nodes with 0 in-degree
+        queue.sort((a, b) => {
+          const ma = byName.get(a)!
+          const mb = byName.get(b)!
+          return getPriority(mb) - getPriority(ma) || ma.name.localeCompare(mb.name)
+        })
+      }
     }
   }
 

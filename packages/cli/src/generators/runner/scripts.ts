@@ -182,64 +182,122 @@ export function generateSetupBat(config: ProjectConfig): string {
   const hasSwagger = isLaravelStack(stack) && config.models.some(m => m.generate?.swagger)
   const lines: string[] = [
     '@echo off',
-    `echo Configuration de ${config.name}...`,
+    'setlocal EnableExtensions EnableDelayedExpansion',
+    `echo [stack-init] Configuration de ${config.name}...`,
     '',
   ]
 
   if (isLaravelStack(stack)) {
-    lines.push('REM Backend — Laravel')
-    lines.push('REM Vider le cache bootstrap avant l\'installation (evite les conflits de providers)')
+    lines.push('REM ── Backend Laravel ──────────────────────────────────────────────')
+    lines.push('echo [1/6] Nettoyage du cache bootstrap...')
     lines.push('if exist "bootstrap\\cache\\packages.php" del /q "bootstrap\\cache\\packages.php"')
     lines.push('if exist "bootstrap\\cache\\services.php" del /q "bootstrap\\cache\\services.php"')
     lines.push('if exist "bootstrap\\cache\\config.php"   del /q "bootstrap\\cache\\config.php"')
     lines.push('if exist "bootstrap\\cache\\routes.php"   del /q "bootstrap\\cache\\routes.php"')
+    lines.push('')
+    lines.push('echo [2/6] Installation des dependances Composer...')
     lines.push('composer update --no-interaction')
+    lines.push('if errorlevel 1 goto :error')
     if (hasSwagger) {
       lines.push('')
-      lines.push('REM Swagger / L5-Swagger')
+      lines.push('echo [2b] Installation de L5-Swagger...')
       lines.push('composer require darkaonline/l5-swagger --no-interaction')
+      lines.push('if errorlevel 1 goto :error')
       lines.push('php artisan vendor:publish --provider "L5Swagger\\L5SwaggerServiceProvider"')
+      lines.push('if errorlevel 1 goto :error')
       lines.push('composer update --no-interaction')
+      lines.push('if errorlevel 1 goto :error')
     }
-    lines.push('copy .env.example .env')
+    lines.push('')
+    lines.push('echo [3/6] Configuration du fichier .env...')
+    lines.push('copy /Y .env.example .env')
+    lines.push('if errorlevel 1 goto :error')
+    lines.push('')
+    lines.push('echo [4/6] Generation de la cle applicative...')
     lines.push('php artisan key:generate')
-    if (needsPassport)  lines.push('composer require laravel/passport --no-interaction')
-    if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
+    lines.push('if errorlevel 1 goto :error')
+    if (needsPassport) {
+      lines.push('')
+      lines.push('echo [4b] Installation de Laravel Passport...')
+      lines.push('composer require laravel/passport --no-interaction')
+      lines.push('if errorlevel 1 goto :error')
+    }
+    if (needsInstallApi) {
+      lines.push('')
+      lines.push("echo [4c] Installation de l'API (Sanctum)...")
+      lines.push('php artisan install:api --no-interaction')
+      lines.push('if errorlevel 1 goto :error')
+    }
     if (needsBreeze) {
+      lines.push('')
+      lines.push('echo [4d] Installation de Laravel Breeze...')
       lines.push('composer require laravel/breeze --no-interaction')
+      lines.push('if errorlevel 1 goto :error')
       lines.push('php artisan breeze:install api --no-interaction')
+      lines.push('if errorlevel 1 goto :error')
     }
     if (needsJetstream) {
+      lines.push('')
+      lines.push('echo [4e] Installation de Laravel Jetstream...')
       lines.push('composer require laravel/jetstream --no-interaction')
+      lines.push('if errorlevel 1 goto :error')
       lines.push('php artisan jetstream:install inertia --no-interaction')
+      lines.push('if errorlevel 1 goto :error')
     }
+    lines.push('')
+    lines.push('echo [5/6] Migration de la base de donnees...')
     lines.push('php artisan migrate --force')
+    lines.push('if errorlevel 1 goto :error')
+    lines.push('')
+    lines.push('echo [6/6] Chargement des donnees initiales (seeders)...')
     lines.push('php artisan db:seed')
-    if (hasSwagger) lines.push('php artisan l5-swagger:generate')
+    lines.push('if errorlevel 1 goto :error')
+    if (hasSwagger) {
+      lines.push('')
+      lines.push('echo Generation de la documentation Swagger...')
+      lines.push('php artisan l5-swagger:generate')
+      lines.push('if errorlevel 1 goto :error')
+    }
     lines.push('')
   } else if (isFastAPIStack(stack)) {
-    lines.push('REM Backend — FastAPI')
-    if (bDir !== '.') lines.push(`cd ${bDir}`)
+    lines.push('REM ── Backend FastAPI ──────────────────────────────────────────────')
+    lines.push('echo [1/1] Installation des dependances Python...')
+    if (bDir !== '.') lines.push(`pushd ${bDir}`)
     lines.push('pip install -r requirements.txt')
-    if (bDir !== '.') lines.push('cd ..')
+    lines.push('if errorlevel 1 goto :error')
+    if (bDir !== '.') lines.push('popd')
     lines.push('')
   } else if (isNodeStack(stack)) {
-    lines.push('REM Backend — Node.js')
-    if (bDir !== '.') lines.push(`cd ${bDir}`)
+    lines.push('REM ── Backend Node.js ──────────────────────────────────────────────')
+    lines.push('echo [1/2] Installation des dependances backend...')
+    if (bDir !== '.') lines.push(`pushd ${bDir}`)
     lines.push('npm install')
-    if (bDir !== '.') lines.push('cd ..')
+    lines.push('if errorlevel 1 goto :error')
+    if (bDir !== '.') lines.push('popd')
     lines.push('')
   }
 
   if (mixed && hasReactFrontend(stack)) {
-    lines.push('REM Frontend')
-    lines.push('cd frontend')
+    lines.push('REM ── Frontend ─────────────────────────────────────────────────────')
+    lines.push('echo [2/2] Installation des dependances frontend...')
+    lines.push('pushd frontend')
     lines.push('npm install')
-    lines.push('cd ..')
+    lines.push('if errorlevel 1 goto :error')
+    lines.push('popd')
     lines.push('')
   }
 
-  lines.push(`echo ${config.name} est pret !`)
+  lines.push(`echo [OK] ${config.name} est pret !`)
+  lines.push('goto :end')
+  lines.push('')
+  lines.push(':error')
+  lines.push('echo.')
+  lines.push("echo [ERREUR] La configuration a echoue a l'etape precedente.")
+  lines.push('echo Verifiez les messages ci-dessus, corrigez le probleme, puis relancez ce script.')
+  lines.push('exit /b 1')
+  lines.push('')
+  lines.push(':end')
+  lines.push('endlocal')
   return lines.join('\n') + '\n'
 }
 
