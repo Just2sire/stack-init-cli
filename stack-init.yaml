@@ -1,64 +1,144 @@
 name: my-blog
 stack: laravel
 
+laravel:
+  pattern:              api-only
+  auth:                 sanctum
+  runner:               makefile
+  db_engine:            mysql
+  php_version:          "8.4"
+  laravel_version:      "12"
+  use_strict_types:     true
+  use_readonly:         false
+  use_enum_backed:      true
+  use_feature_requests: true
+  route_prefix:         api
+  api_version:          v1
+  use_redis:            false
+  use_api_response:     true
+
 models:
+  # ─────────────────────────────────────────
+  # Category — parent model (pas de dépendance)
+  # ─────────────────────────────────────────
+  - name: Category
+    table: categories
+    fields:
+      - { name: name,   type: string,  unique: true }
+      - { name: slug,   type: string,  unique: true }
+      - { name: status, type: enum,    values: [active, archived] }
+    relations:
+      - { type: hasMany, model: Post }
+    migration:
+      timestamps:  true
+      primary_key: uuid
+    generate:
+      migration:  true
+      controller: true
+      resource:   true
+      collection: true
+      request:    true
+      policy:     true
+      factory:    true
+      seeder:     true
+      service:    true
+      repository: true
+      routes:     true
+      tests:      true
+      swagger:    true
+
+  # ─────────────────────────────────────────
+  # Post — dépend de Category et User
+  # ─────────────────────────────────────────
+  - name: Post
+    fields:
+      - { name: title,         type: string }
+      - { name: body,          type: longText }
+      - { name: status,        type: enum,      values: [draft, published, archived] }
+      - { name: published_at,  type: timestamp, nullable: true }
+      - { name: views_count,   type: integer,   default: 0 }
+      - { name: category_id,   type: foreignUuid, references: categories }
+      - { name: user_id,       type: foreignId,   references: users }
+    relations:
+      - { type: belongsTo, model: Category }
+      - { type: belongsTo, model: User }
+      - { type: hasMany,   model: Comment }
+    migration:
+      timestamps:  true
+      softDeletes: true
+      primary_key: uuid
+    generate:
+      migration:  true
+      controller: true
+      resource:   true
+      collection: true
+      request:    true
+      policy:     true
+      factory:    true
+      seeder:     true
+      service:    true
+      repository: true
+      observer:   true
+      events:     true
+      actions:    true
+      routes:     true
+      tests:      true
+      swagger:    true
+
+  # ─────────────────────────────────────────
+  # Comment — dépend de Post et User (tri topologique)
+  # ─────────────────────────────────────────
+  - name: Comment
+    fields:
+      - { name: body,     type: text }
+      - { name: status,   type: enum,    values: [pending, approved, rejected] }
+      - { name: user_id,  type: foreignId,   references: users }
+      - { name: post_id,  type: foreignUuid, references: posts }
+    relations:
+      - { type: belongsTo, model: User }
+      - { type: belongsTo, model: Post }
+    migration:
+      timestamps:  true
+      softDeletes: true
+      primary_key: uuid
+    generate:
+      migration:  true
+      controller: true
+      resource:   true
+      request:    true
+      policy:     false
+      factory:    true
+      seeder:     false
+      service:    true
+      repository: true
+      actions:    true
+      routes:     true
+      tests:      true
+      swagger:    true
+
+  # ─────────────────────────────────────────
+  # User — fourni par Laravel Auth, enrichi ici
+  # ─────────────────────────────────────────
   - name: User
     fields:
-      - { name: name,               type: string }
-      - { name: email,              type: string,    unique: true }
-      - { name: role,               type: enum,      values: [admin, editor, viewer] }
-      - { name: email_verified_at,  type: timestamp, nullable: true }
+      - { name: name,              type: string }
+      - { name: email,             type: string,    unique: true }
+      - { name: role,              type: enum,      values: [admin, editor, viewer] }
+      - { name: email_verified_at, type: timestamp, nullable: true }
     relations:
       - { type: hasMany, model: Post }
       - { type: hasMany, model: Comment }
     migration:
       timestamps: true
     generate:
-      migration:  true
-      resource:   true
-      request:    true
-      policy:     true
-      factory:    true
-      tests:      true
-
-  - name: Post
-    fields:
-      - { name: title,        type: string }
-      - { name: body,         type: longText }
-      - { name: published_at, type: timestamp, nullable: true }
-      - { name: user_id,      type: foreignId, references: users }
-    relations:
-      - { type: belongsTo, model: User }
-      - { type: hasMany,   model: Comment }
-    migration:
-      timestamps:  true
-      softDeletes: true
-    generate:
-      migration: true
-      resource:  true
-      request:   true
-      factory:   true
-      tests:     true
-
-  - name: Comment
-    fields:
-      - { name: body,     type: text }
-      - { name: user_id,  type: foreignId, references: users }
-      - { name: post_id,  type: foreignId, references: posts }
-    relations:
-      - { type: belongsTo, model: User }
-      - { type: belongsTo, model: Post }
-    generate:
-      migration: true
-      resource:  true
-      request:   true
-      factory:   true
-      tests:     false
-
-laravel:
-  pattern:          api-only
-  auth:             sanctum
-  runner:           makefile
-  db_engine:        mysql
-  php_version:      "8.2"
-  laravel_version:  "11"
+      migration:   true
+      controller:  true
+      resource:    true
+      request:     true
+      policy:      true
+      factory:     true
+      service:     true
+      repository:  true
+      routes:      true
+      tests:       true
+      swagger:     true

@@ -1,0 +1,55 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`LaravelGenerator — api-only/sanctum (basic) > generates the expected file paths 1`] = `
+[
+  ".env.example",
+  "app/Console/Commands/Pattern.php",
+  "app/Http/Controllers/Api/PostController.php",
+  "app/Http/Controllers/Auth/AuthController.php",
+  "app/Http/Requests/Auth/LoginRequest.php",
+  "app/Http/Requests/Auth/RegisterRequest.php",
+  "app/Http/Requests/Post/StorePostRequest.php",
+  "app/Http/Requests/Post/UpdatePostRequest.php",
+  "app/Http/Resources/PostResource.php",
+  "app/Models/Post.php",
+  "app/Traits/ApiResponse.php",
+  "bootstrap/app.php",
+  "database/factories/PostFactory.php",
+  "database/migrations/TIMESTAMP_create_posts_table.php",
+  "database/seeders/DatabaseSeeder.php",
+  "database/seeders/PostSeeder.php",
+  "routes/api.php",
+]
+`;
+
+exports[`LaravelGenerator — full options with feature-based requests > generates the expected file paths 1`] = `
+[
+  ".env.example",
+  "SWAGGER_SETUP.md",
+  "app/Console/Commands/Pattern.php",
+  "app/Http/Controllers/Api/ArticleController.php",
+  "app/Http/Controllers/Auth/AuthController.php",
+  "app/Http/Controllers/Controller.php",
+  "app/Http/Requests/Article/StoreArticleRequest.php",
+  "app/Http/Requests/Article/UpdateArticleRequest.php",
+  "app/Http/Requests/Auth/LoginRequest.php",
+  "app/Http/Requests/Auth/RegisterRequest.php",
+  "app/Http/Resources/ArticleCollection.php",
+  "app/Http/Resources/ArticleResource.php",
+  "app/Models/Article.php",
+  "app/Policies/ArticlePolicy.php",
+  "app/Repositories/ArticleRepository.php",
+  "app/Repositories/BaseRepository.php",
+  "app/Repositories/Contracts/ArticleRepositoryInterface.php",
+  "app/Repositories/Contracts/BaseRepositoryInterface.php",
+  "app/Services/ArticleService.php",
+  "app/Traits/ApiResponse.php",
+  "bootstrap/app.php",
+  "database/factories/ArticleFactory.php",
+  "database/migrations/TIMESTAMP_create_articles_table.php",
+  "database/seeders/ArticleSeeder.php",
+  "database/seeders/DatabaseSeeder.php",
+  "routes/api.php",
+  "tests/Feature/ArticleTest.php",
+]
+`;

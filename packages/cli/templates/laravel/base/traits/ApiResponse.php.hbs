@@ -96,6 +96,9 @@ trait ApiResponse
         if (method_exists($paginator, 'currentPage')) {
             $meta['current_page'] = $paginator->currentPage();
         }
+        if (method_exists($paginator, 'getCursor')) {
+            $meta['cursor'] = $paginator->getCursor()?->encode();
+        }
 
         return response()->json([
             'success' => true,
@@ -139,6 +142,13 @@ trait ApiResponse
         return response()->json($payload, $status);
     }
 
+    protected function businessError(string $message, ?string $rule = null): JsonResponse
+    {
+        $errors = $rule ? ['_rule' => [$rule]] : null;
+
+        return $this->error($message, 422, $errors);
+    }
+
     protected function validationError(array $errors = [], string $message = 'Les données fournies sont invalides.'): JsonResponse
     {
         return response()->json(['success' => false, 'message' => $message, 'errors' => $errors], 422);
@@ -154,9 +164,9 @@ trait ApiResponse
         return $this->error($message, 401);
     }
 
-    protected function forbidden(string $message = "Vous n'êtes pas autorisé à effectuer cette action."): JsonResponse
+    protected function forbidden(string $message = "Vous n'êtes pas autorisé à effectuer cette action.", ?string $code = null): JsonResponse
     {
-        return $this->error($message, 403);
+        return $this->error($message, 403, null, $code ? ['code' => $code] : null);
     }
 
     protected function conflict(string $message = 'Un conflit est survenu avec la ressource existante.'): JsonResponse
@@ -186,18 +196,15 @@ trait ApiResponse
         return $this->error($message, 500, null, $debug);
     }
 
+    protected function serviceUnavailable(string $message = 'Le service est temporairement indisponible.'): JsonResponse
+    {
+        return $this->error($message, 503);
+    }
+
     // =========================================================================
     // Utilitaire : exécution sécurisée
     // =========================================================================
 
-    /**
-     * Exécute un callback et intercepte les exceptions Laravel courantes.
-     *
-     * - ModelNotFoundException  → 404
-     * - AuthorizationException  → 403
-     * - ValidationException     → 422
-     * - Throwable               → 500
-     */
     protected function try(callable $callback, string $errorMessage = 'Une erreur inattendue est survenue.'): JsonResponse
     {
         try {

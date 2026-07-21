@@ -103,8 +103,9 @@ export function fieldToCast(field: NamedField): string | null {
     case 'decimal':                     return `'decimal:${field.scale}'`
     case 'date':                        return `'date'`
     case 'dateTime': case 'dateTimeTz': return `'datetime'`
-    case 'timestamp': case 'timestampTz': return `'timestamp'`
+    case 'timestamp': case 'timestampTz': return `'datetime'`
     case 'json': case 'jsonb':          return `'array'`
+    case 'enum':                        return `'string'`
     default:                            return null
   }
 }

@@ -8,47 +8,45 @@ namespace App\Http\Controllers;
 
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Routing\Controller as BaseController;
+use OpenApi\Attributes as OA;
 
-/**
- * @OA\Info(
- *     version="1.0.0",
- *     title="{{projectName}} API",
- *     description="API REST — générée par stack-init",
- *     @OA\Contact(email="contact@example.com", name="Support"),
- *     @OA\License(name="MIT")
- * )
- *
- * @OA\Server(url=L5_SWAGGER_CONST_HOST, description="Serveur actif")
- *
- * @OA\SecurityScheme(
- *     securityScheme="sanctum",
- *     type="http",
- *     scheme="bearer",
- *     bearerFormat="JWT",
- *     description="Authentification via Laravel Sanctum (Bearer token)."
- * )
- *
- * @OA\Schema(
- *     schema="ErrorResponse",
- *     @OA\Property(property="success", type="boolean", example=false),
- *     @OA\Property(property="message", type="string", example="Une erreur est survenue.")
- * )
- *
- * @OA\Schema(
- *     schema="ValidationErrorResponse",
- *     @OA\Property(property="success", type="boolean", example=false),
- *     @OA\Property(property="message", type="string", example="Les données fournies sont invalides."),
- *     @OA\Property(
- *         property="errors",
- *         type="object",
- *         @OA\Property(
- *             property="field_name",
- *             type="array",
- *             @OA\Items(type="string", example="Le champ est obligatoire.")
- *         )
- *     )
- * )
- */
+#[OA\Info(
+    version: "1.0.0",
+    title: "{{projectName}} API",
+    description: "API REST — générée par stack-init",
+    contact: new OA\Contact(email: "contact@example.com", name: "Support"),
+    license: new OA\License(name: "MIT")
+)]
+#[OA\Server(url: L5_SWAGGER_CONST_HOST, description: "Serveur actif")]
+#[OA\SecurityScheme(
+    securityScheme: "sanctum",
+    type: "http",
+    scheme: "bearer",
+    bearerFormat: "JWT",
+    description: "Authentification via Laravel Sanctum (Bearer token)."
+)]
+#[OA\Schema(
+    schema: "ErrorResponse",
+    properties: [
+        new OA\Property(property: "success", type: "boolean", example: false),
+        new OA\Property(property: "message", type: "string", example: "Une erreur est survenue."),
+    ]
+)]
+#[OA\Schema(
+    schema: "ValidationErrorResponse",
+    properties: [
+        new OA\Property(property: "success", type: "boolean", example: false),
+        new OA\Property(property: "message", type: "string", example: "Les données fournies sont invalides."),
+        new OA\Property(
+            property: "errors",
+            type: "object",
+            additionalProperties: new OA\AdditionalProperties(
+                type: "array",
+                items: new OA\Items(type: "string", example: "Le champ est obligatoire.")
+            )
+        ),
+    ]
+)]
 class Controller extends BaseController
 {
     use AuthorizesRequests;

@@ -912,7 +912,8 @@ PHP;
         $resWrap = fn (string $expr) => $hasRes ? "new {$name}Resource({$expr})" : $expr;
         $resClass = $hasRes ? ", {$name}Resource::class" : '';
 
-        $tagAnnotation    = $hasSwagger ? "\n/**\n * @OA\\Tag(name=\"{$name}\", description=\"Gestion des {$name}s\")\n */" : '';
+        $tagAnnotation    = $hasSwagger ? "\n#[OA\\Tag(name: '{$name}', description: 'Gestion des {$name}s')]" : '';
+        $useOA            = $hasSwagger ? "\nuse OpenApi\\Attributes as OA;" : '';
         $indexAnnotation  = $hasSwagger ? $this->swaggerIndexAnnotation($name)   : '';
         $showAnnotation   = $hasSwagger ? $this->swaggerShowAnnotation($name)    : '';
         $storeAnnotation  = $hasSwagger ? $this->swaggerStoreAnnotation($name)   : '';
@@ -929,7 +930,7 @@ PHP;
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-{$useReq}{$useRes}{$useApiResponse}
+{$useReq}{$useRes}{$useApiResponse}{$useOA}
 use App\Models\\{$name};
 use App\Services\\{$name}Service;
 use Illuminate\Http\JsonResponse;
@@ -994,7 +995,7 @@ PHP;
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-{$useReq}{$useRes}
+{$useReq}{$useRes}{$useOA}
 use App\Models\\{$name};
 use App\Services\\{$name}Service;
 use Illuminate\Http\JsonResponse;
@@ -1271,7 +1272,7 @@ PHP;
         if (! $this->files->exists($controllerPath)) return;
 
         $content = $this->files->get($controllerPath);
-        if (str_contains($content, '@OA\Info')) return;
+        if (str_contains($content, 'OA\Info')) return;
 
         $annotations = $this->stubSwaggerGlobalAnnotations();
         $content = preg_replace(
@@ -1287,77 +1288,81 @@ PHP;
 
     private function stubSwaggerGlobalAnnotations(): string
     {
-        return <<<'PHPDOC'
-/**
- * @OA\Info(
- *     version="1.0.0",
- *     title="{{projectName}} API",
- *     description="API documentation"
- * )
- *
- * @OA\Server(url=L5_SWAGGER_CONST_HOST)
- *
- * @OA\SecurityScheme(
- *     securityScheme="sanctum",
- *     type="http",
- *     scheme="bearer",
- *     bearerFormat="JWT",
- *     description="Sanctum token-based authentication"
- * )
- *
- * @OA\Schema(
- *     schema="ErrorResponse",
- *     @OA\Property(property="success", type="boolean", example=false),
- *     @OA\Property(property="message", type="string", example="Une erreur s'est produite.")
- * )
- *
- * @OA\Schema(
- *     schema="ValidationErrorResponse",
- *     @OA\Property(property="success", type="boolean", example=false),
- *     @OA\Property(property="message", type="string"),
- *     @OA\Property(property="errors", type="object")
- * )
- */
-PHPDOC;
+        return <<<'PHP'
+use OpenApi\Attributes as OA;
+
+#[OA\Info(
+    version: "1.0.0",
+    title: "{{projectName}} API",
+    description: "API documentation"
+)]
+#[OA\Server(url: L5_SWAGGER_CONST_HOST)]
+#[OA\SecurityScheme(
+    securityScheme: "sanctum",
+    type: "http",
+    scheme: "bearer",
+    bearerFormat: "JWT",
+    description: "Sanctum token-based authentication"
+)]
+#[OA\Schema(
+    schema: "ErrorResponse",
+    properties: [
+        new OA\Property(property: "success", type: "boolean", example: false),
+        new OA\Property(property: "message", type: "string", example: "Une erreur s'est produite."),
+    ]
+)]
+#[OA\Schema(
+    schema: "ValidationErrorResponse",
+    properties: [
+        new OA\Property(property: "success", type: "boolean", example: false),
+        new OA\Property(property: "message", type: "string"),
+        new OA\Property(property: "errors", type: "object"),
+    ]
+)]
+PHP;
     }
 
     private function swaggerIndexAnnotation(string $name): string
     {
         $kebab = Str::kebab(Str::plural($name));
 
-        return <<<PHPDOC
-    /**
-     * @OA\Get(
-     *     path="/api/{{laravelOptions.api_version}}/{$kebab}",
-     *     tags=["{$name}"],
-     *     summary="Liste les {$name}s",
-     *     security=\{{"sanctum":{}}},
-     *     @OA\Parameter(name="per_page", in="query", required=false, @OA\Schema(type="integer", example=15)),
-     *     @OA\Parameter(name="search",   in="query", required=false, @OA\Schema(type="string")),
-     *     @OA\Response(response=200, description="Succès"),
-     *     @OA\Response(response=401, description="Non authentifié", @OA\JsonContent(ref="#/components/schemas/ErrorResponse"))
-     * )
-     */
-PHPDOC;
+        return <<<PHP
+    #[OA\Get(
+        path: "/{{laravelOptions.route_prefix}}/{$kebab}",
+        summary: "Liste les {$name}s",
+        tags: ["{$name}"],
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: "per_page", in: "query", required: false, schema: new OA\Schema(type: "integer", example: 15)),
+            new OA\Parameter(name: "search", in: "query", required: false, schema: new OA\Schema(type: "string")),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Succès"),
+            new OA\Response(response: 401, description: "Non authentifié", content: new OA\JsonContent(ref: "#/components/schemas/ErrorResponse")),
+        ]
+    )]
+PHP;
     }
 
     private function swaggerShowAnnotation(string $name): string
     {
         $kebab = Str::kebab(Str::plural($name));
 
-        return <<<PHPDOC
-    /**
-     * @OA\Get(
-     *     path="/api/{{laravelOptions.api_version}}/{$kebab}/{id}",
-     *     tags=["{$name}"],
-     *     summary="Affiche un {$name}",
-     *     security=\{{"sanctum":{}}},
-     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="string", format="uuid")),
-     *     @OA\Response(response=200, description="Succès"),
-     *     @OA\Response(response=404, description="Introuvable", @OA\JsonContent(ref="#/components/schemas/ErrorResponse"))
-     * )
-     */
-PHPDOC;
+        return <<<PHP
+    #[OA\Get(
+        path: "/{{laravelOptions.route_prefix}}/{$kebab}/{id}",
+        summary: "Affiche un {$name}",
+        tags: ["{$name}"],
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: "id", in: "path", required: true, schema: new OA\Schema(type: "string", format: "uuid")),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Succès"),
+            new OA\Response(response: 404, description: "Introuvable", content: new OA\JsonContent(ref: "#/components/schemas/ErrorResponse")),
+        ]
+    )]
+PHP;
     }
 
     private function swaggerStoreAnnotation(string $name): string
@@ -1369,24 +1374,28 @@ PHPDOC;
         foreach ($fields as $field => $type) {
             $swType  = $this->mapSwaggerTypeToPhp($type);
             $example = $this->generateExampleForType($field, $type);
-            $properties .= " *         @OA\Property(property=\"{$field}\", type=\"{$swType}\", example={$example}),\n";
+            $properties .= "                    new OA\Property(property: \"{$field}\", type: \"{$swType}\", example: {$example}),\n";
         }
 
-        return <<<PHPDOC
-    /**
-     * @OA\Post(
-     *     path="/api/{{laravelOptions.api_version}}/{$kebab}",
-     *     tags=["{$name}"],
-     *     summary="Crée un {$name}",
-     *     security=\{{"sanctum":{}}},
-     *     @OA\RequestBody(required=true, @OA\JsonContent(
-     *         required={},
-{$properties}     *     )),
-     *     @OA\Response(response=201, description="Créé"),
-     *     @OA\Response(response=422, description="Validation", @OA\JsonContent(ref="#/components/schemas/ValidationErrorResponse"))
-     * )
-     */
-PHPDOC;
+        return <<<PHP
+    #[OA\Post(
+        path: "/{{laravelOptions.route_prefix}}/{$kebab}",
+        summary: "Crée un {$name}",
+        tags: ["{$name}"],
+        security: [['sanctum' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                properties: [
+{$properties}                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 201, description: "Créé"),
+            new OA\Response(response: 422, description: "Validation", content: new OA\JsonContent(ref: "#/components/schemas/ValidationErrorResponse")),
+        ]
+    )]
+PHP;
     }
 
     private function swaggerUpdateAnnotation(string $name): string
@@ -1398,43 +1407,52 @@ PHPDOC;
         foreach ($fields as $field => $type) {
             $swType  = $this->mapSwaggerTypeToPhp($type);
             $example = $this->generateExampleForType($field, $type);
-            $properties .= " *         @OA\Property(property=\"{$field}\", type=\"{$swType}\", example={$example}),\n";
+            $properties .= "                    new OA\Property(property: \"{$field}\", type: \"{$swType}\", example: {$example}),\n";
         }
 
-        return <<<PHPDOC
-    /**
-     * @OA\Put(
-     *     path="/api/{{laravelOptions.api_version}}/{$kebab}/{id}",
-     *     tags=["{$name}"],
-     *     summary="Met à jour un {$name}",
-     *     security=\{{"sanctum":{}}},
-     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="string", format="uuid")),
-     *     @OA\RequestBody(required=true, @OA\JsonContent(
-{$properties}     *     )),
-     *     @OA\Response(response=200, description="Mis à jour"),
-     *     @OA\Response(response=422, description="Validation", @OA\JsonContent(ref="#/components/schemas/ValidationErrorResponse"))
-     * )
-     */
-PHPDOC;
+        return <<<PHP
+    #[OA\Put(
+        path: "/{{laravelOptions.route_prefix}}/{$kebab}/{id}",
+        summary: "Met à jour un {$name}",
+        tags: ["{$name}"],
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: "id", in: "path", required: true, schema: new OA\Schema(type: "string", format: "uuid")),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                properties: [
+{$properties}                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: "Mis à jour"),
+            new OA\Response(response: 422, description: "Validation", content: new OA\JsonContent(ref: "#/components/schemas/ValidationErrorResponse")),
+        ]
+    )]
+PHP;
     }
 
     private function swaggerDestroyAnnotation(string $name): string
     {
         $kebab = Str::kebab(Str::plural($name));
 
-        return <<<PHPDOC
-    /**
-     * @OA\Delete(
-     *     path="/api/{{laravelOptions.api_version}}/{$kebab}/{id}",
-     *     tags=["{$name}"],
-     *     summary="Supprime un {$name}",
-     *     security=\{{"sanctum":{}}},
-     *     @OA\Parameter(name="id", in="path", required=true, @OA\Schema(type="string", format="uuid")),
-     *     @OA\Response(response=200, description="Supprimé"),
-     *     @OA\Response(response=404, description="Introuvable", @OA\JsonContent(ref="#/components/schemas/ErrorResponse"))
-     * )
-     */
-PHPDOC;
+        return <<<PHP
+    #[OA\Delete(
+        path: "/{{laravelOptions.route_prefix}}/{$kebab}/{id}",
+        summary: "Supprime un {$name}",
+        tags: ["{$name}"],
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: "id", in: "path", required: true, schema: new OA\Schema(type: "string", format: "uuid")),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Supprimé"),
+            new OA\Response(response: 404, description: "Introuvable", content: new OA\JsonContent(ref: "#/components/schemas/ErrorResponse")),
+        ]
+    )]
+PHP;
     }
 
     private function mapSwaggerTypeToPhp(string $type): string

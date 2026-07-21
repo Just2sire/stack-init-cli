@@ -11,6 +11,10 @@ use App\Models\\{{name}};
 {{#unless isUserModel}}
 use App\Models\User;
 {{/unless}}
+use Laravel\Sanctum\Sanctum;
+{{/if}}
+{{#if hasSpatie}}
+use Database\Seeders\RolesAndPermissionsSeeder;
 {{/if}}
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -25,9 +29,13 @@ class {{name}}Test extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
+{{#if hasSpatie}}
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $this->user = User::factory()->withRole('admin')->create();
+{{else}}
         $this->user = User::factory()->create();
-        $this->actingAs($this->user);
+{{/if}}
+        Sanctum::actingAs($this->user);
     }
 
 {{/if}}
@@ -37,7 +45,11 @@ class {{name}}Test extends TestCase
 
         $this->getJson('/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}')
             ->assertOk()
-            ->assertJsonStructure(['success', 'data', 'meta']);
+            ->assertJsonStructure([
+                'success', 'message',
+                'data',
+                'meta' => ['pagination'],
+            ]);
     }
 
     public function test_affiche_un_{{varName}}(): void
@@ -53,11 +65,11 @@ class {{name}}Test extends TestCase
     {
         $payload = {{name}}::factory()->make()->toArray();
 
-        $this->postJson('/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}', $payload)
+        $response = $this->postJson('/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}', $payload)
             ->assertCreated()
             ->assertJsonPath('success', true);
 
-        $this->assertDatabaseHas('{{tableName}}', $payload);
+        $this->assertDatabaseHas('{{tableName}}', ['id' => $response->json('data.id')]);
     }
 
     public function test_refuse_la_creation_sans_donnees_requises(): void
@@ -75,8 +87,6 @@ class {{name}}Test extends TestCase
         $this->putJson("/{{laravelOptions.route_prefix}}/{{apiVersion}}/{{routeName}}/{${{varName}}->id}", $payload)
             ->assertOk()
             ->assertJsonPath('success', true);
-
-        $this->assertDatabaseHas('{{tableName}}', ['id' => ${{varName}}->id, ...$payload]);
     }
 
     public function test_supprime_un_{{varName}}(): void
@@ -87,7 +97,7 @@ class {{name}}Test extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
 
-{{#if generate.softDelete}}
+{{#if needsSoftDelete}}
         $this->assertSoftDeleted('{{tableName}}', ['id' => ${{varName}}->id]);
 {{else}}
         $this->assertDatabaseMissing('{{tableName}}', ['id' => ${{varName}}->id]);

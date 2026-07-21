@@ -27,7 +27,7 @@ class {{name}}Service
 
     public function paginate(Request $request): LengthAwarePaginator
     {
-        return $this->repository->paginate($request->integer('per_page', 15));
+        return $this->repository->paginate([], $request->integer('per_page', 15));
     }
 
     public function create(array $data): {{name}}

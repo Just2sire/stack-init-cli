@@ -1,7 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import Handlebars from 'handlebars'
-import pc from 'picocolors'
 import type { Model, ProjectConfig } from '@stack-init/schema'
 import { configureHandlebars } from './handlebars'
 import { fieldToCast, fieldToValidationRule, fieldToFaker, fieldToSwaggerType } from '../../utils/field-helpers'
@@ -73,7 +72,7 @@ export class LaravelGenerator {
     // If routes/api.php doesn't exist yet and artisan is available, use `php artisan install:api`
     // to create it (installs Sanctum + proper bootstrapping) instead of rendering our template.
     // We re-read the file afterward so buildApiPhp() enters patch mode and injects our routes.
-    if (!existingApi && artisanAvailable && laravelPattern !== 'minimal') {
+    if (existingApi === null && artisanAvailable && laravelPattern !== 'minimal') {
       try {
         await runArtisan(projectRoot, ['install:api', '--no-interaction'])
         const apiPhpPath = path.join(projectRoot, 'routes/api.php')
@@ -92,6 +91,9 @@ export class LaravelGenerator {
     if (config.laravel?.use_api_response !== false) {
       result.files.push({ outputPath: 'app/Traits/ApiResponse.php', content: this.render('base/traits/ApiResponse.php.hbs', infraCtx) })
     }
+
+    // bootstrap/app.php — Laravel 11+ requires explicit api: routing declaration
+    result.files.push({ outputPath: 'bootstrap/app.php', content: this.render('base/bootstrap/app.php.hbs', infraCtx) })
 
     // app:pattern artisan command — always generated so devs can add models post-scaffold.
     // When artisan is available, we first spawn `php artisan make:command Pattern --force`
@@ -288,8 +290,10 @@ export class LaravelGenerator {
 
     // Requests
     if (model.generate.request) {
-      files.push({ outputPath: `app/Http/Requests/Store${model.name}Request.php`,  content: this.render('overlays/request/StoreRequest.php.hbs', ctx) })
-      files.push({ outputPath: `app/Http/Requests/Update${model.name}Request.php`, content: this.render('overlays/request/UpdateRequest.php.hbs', ctx) })
+      const useFeatureReqs = config.laravel?.use_feature_requests !== false
+      const reqDir = useFeatureReqs ? `app/Http/Requests/${model.name}` : 'app/Http/Requests'
+      files.push({ outputPath: `${reqDir}/Store${model.name}Request.php`,  content: this.render('overlays/request/StoreRequest.php.hbs', ctx) })
+      files.push({ outputPath: `${reqDir}/Update${model.name}Request.php`, content: this.render('overlays/request/UpdateRequest.php.hbs', ctx) })
     }
 
     // Policy
@@ -383,7 +387,10 @@ export class LaravelGenerator {
       .map(f => f.name)
 
     const imports: string[] = []
-    if (model.generate.softDelete) imports.push('Illuminate\\Database\\Eloquent\\SoftDeletes')
+    const needsSoftDelete = model.generate.softDelete || (model.migration as Record<string, unknown>).softDeletes === true
+    if (needsSoftDelete) imports.push('Illuminate\\Database\\Eloquent\\SoftDeletes')
+    if (primaryKey === 'uuid') imports.push('Illuminate\\Database\\Eloquent\\Concerns\\HasUuids')
+    if (primaryKey === 'ulid') imports.push('Illuminate\\Database\\Eloquent\\Concerns\\HasUlids')
 
     const resourceFields = model.fields.filter(
       f => !['foreignId', 'foreignUuid', 'foreignUlid', 'morphs', 'uuidMorphs', 'id', 'rememberToken'].includes(f.type)
@@ -402,14 +409,25 @@ export class LaravelGenerator {
 
     const fakerFields = model.fields
       .filter(f => !['id', 'rememberToken'].includes(f.type))
-      .map(field => ({ name: field.name, faker: fieldToFaker(field) }))
+      .map(field => {
+        if (['foreignId', 'foreignUuid', 'foreignUlid'].includes(field.type) && 'references' in field) {
+          const ref = (field as Record<string, unknown>).references as string
+          const relatedModel = config.models.find(m =>
+            (m.table ?? modelToTableName(m.name)) === ref
+          )
+          if (relatedModel) {
+            return { name: field.name, faker: `\\App\\Models\\${relatedModel.name}::factory()` }
+          }
+        }
+        return { name: field.name, faker: fieldToFaker(field) }
+      })
 
     const swaggerFields = model.fields
       .filter(f => !['id', 'rememberToken', 'morphs', 'uuidMorphs'].includes(f.type))
       .map(field => ({
         name:     field.name,
         oaType:   fieldToSwaggerType(field),
-        nullable: 'nullable' in field ? (field as any).nullable ?? false : false,
+        nullable: 'nullable' in field ? (field as Record<string, unknown>).nullable ?? false : false,
       }))
 
     const hasUserRelation = model.relations.some(r => r.model === 'User') ||
@@ -419,7 +437,10 @@ export class LaravelGenerator {
     const apiVersion     = config.laravel?.api_version ?? 'v1'
     const hasAuth        = laravelAuth !== 'none'
     const projectName    = config.name
-    const swaggerSecurity = '     *     security={{"sanctum":{}}},\n'
+    const swaggerSecurity = 'security: [[\'sanctum\' => []]],'
+
+    const laravelPlugins = (config as Record<string, unknown>).laravel_plugins as string[] | undefined
+    const hasSpatie = Array.isArray(laravelPlugins) && laravelPlugins.includes('spatie-permissions')
 
     return {
       name: model.name, namePlural, tableName, varName, routeName,
@@ -434,6 +455,7 @@ export class LaravelGenerator {
       apiVersion, hasAuth, projectName, swaggerSecurity,
       isUserModel:    model.name === 'User',
       modelParamName: model.name === 'User' ? 'model' : modelToVarName(model.name),
+      hasSpatie, needsSoftDelete,
     }
   }
 
@@ -449,7 +471,6 @@ export class LaravelGenerator {
 
   private generateEnvExample(config: ProjectConfig): GeneratedFile {
     const db   = config.laravel?.db_engine  ?? 'mysql'
-    const auth = config.laravel?.auth       ?? 'none'
     const name = config.name
     const useRedis = config.laravel?.use_redis ?? false
 
@@ -940,36 +961,36 @@ php artisan l5-swagger:generate
 ## Exemple d'annotation sur un Controller
 
 \`\`\`php
-/**
- * @OA\\Info(title="${title} API", version="1.0")
- */
+use OpenApi\\Attributes as OA;
 
-/**
- * @OA\\Get(
- *     path="/api/users",
- *     summary="Lister les utilisateurs",
- *     tags={"Users"},
- *     security={{"sanctum":{}}},
- *     @OA\\Response(
- *         response=200,
- *         description="Liste des utilisateurs"
- *     )
- * )
- */
+#[OA\\Info(title: "${title} API", version: "1.0")]
+
+#[OA\\Get(
+    path: "/api/users",
+    summary: "Lister les utilisateurs",
+    tags: ["Users"],
+    security: [['sanctum' => []]],
+    responses: [
+        new OA\\Response(
+            response: 200,
+            description: "Liste des utilisateurs"
+        ),
+    ]
+)]
 public function index() { ... }
 
-/**
- * @OA\\Post(
- *     path="/api/users",
- *     summary="Créer un utilisateur",
- *     tags={"Users"},
- *     security={{"sanctum":{}}},
- *     @OA\\RequestBody(
- *         @OA\\JsonContent(ref="#/components/schemas/StoreUserRequest")
- *     ),
- *     @OA\\Response(response=201, description="Utilisateur créé")
- * )
- */
+#[OA\\Post(
+    path: "/api/users",
+    summary: "Créer un utilisateur",
+    tags: ["Users"],
+    security: [['sanctum' => []]],
+    requestBody: new OA\\RequestBody(
+        content: new OA\\JsonContent(ref: "#/components/schemas/StoreUserRequest")
+    ),
+    responses: [
+        new OA\\Response(response: 201, description: "Utilisateur créé"),
+    ]
+)]
 public function store(StoreUserRequest $request) { ... }
 \`\`\`
 
@@ -987,6 +1008,7 @@ php artisan l5-swagger:generate
 
   private laravelAuthController(auth: string, config: ProjectConfig): string {
     const strictLine  = config.laravel?.use_strict_types !== false ? '\ndeclare(strict_types=1);\n' : ''
+    const routePrefix = config.laravel?.route_prefix ?? 'api'
     const isPassport  = auth === 'passport'
     const tokenCreate = isPassport
       ? `$token = $user->createToken('auth_token')->accessToken;`
@@ -1005,9 +1027,31 @@ use App\\Models\\User;
 use Illuminate\\Http\\JsonResponse;
 use Illuminate\\Support\\Facades\\Auth;
 use Illuminate\\Support\\Facades\\Hash;
+use OpenApi\\Attributes as OA;
 
 class AuthController extends Controller
 {
+    #[OA\\Post(
+        path: "/${routePrefix}/auth/register",
+        summary: "Enregistrement d'un nouvel utilisateur",
+        tags: ["Auth"],
+        requestBody: new OA\\RequestBody(
+            required: true,
+            content: new OA\\JsonContent(
+                required: ["name", "email", "password", "password_confirmation"],
+                properties: [
+                    new OA\\Property(property: "name", type: "string", example: "John Doe"),
+                    new OA\\Property(property: "email", type: "string", format: "email", example: "john@example.com"),
+                    new OA\\Property(property: "password", type: "string", format: "password", example: "password123"),
+                    new OA\\Property(property: "password_confirmation", type: "string", format: "password", example: "password123"),
+                ]
+            )
+        ),
+        responses: [
+            new OA\\Response(response: 201, description: "Utilisateur créé avec succès"),
+            new OA\\Response(response: 422, description: "Erreur de validation"),
+        ]
+    )]
     public function register(RegisterRequest $request): JsonResponse
     {
         $user = User::create([
@@ -1025,6 +1069,25 @@ class AuthController extends Controller
         ], 201);
     }
 
+    #[OA\\Post(
+        path: "/${routePrefix}/auth/login",
+        summary: "Connexion utilisateur",
+        tags: ["Auth"],
+        requestBody: new OA\\RequestBody(
+            required: true,
+            content: new OA\\JsonContent(
+                required: ["email", "password"],
+                properties: [
+                    new OA\\Property(property: "email", type: "string", format: "email", example: "john@example.com"),
+                    new OA\\Property(property: "password", type: "string", format: "password", example: "password123"),
+                ]
+            )
+        ),
+        responses: [
+            new OA\\Response(response: 200, description: "Connexion réussie"),
+            new OA\\Response(response: 401, description: "Identifiants invalides"),
+        ]
+    )]
     public function login(LoginRequest $request): JsonResponse
     {
         if (!Auth::attempt($request->only('email', 'password'))) {
@@ -1040,6 +1103,15 @@ class AuthController extends Controller
         ]);
     }
 
+    #[OA\\Post(
+        path: "/${routePrefix}/auth/logout",
+        summary: "Déconnexion utilisateur",
+        tags: ["Auth"],
+        security: [['sanctum' => []]],
+        responses: [
+            new OA\\Response(response: 200, description: "Déconnexion réussie"),
+        ]
+    )]
     public function logout(): JsonResponse
     {
         ${tokenRevoke}
@@ -1047,6 +1119,16 @@ class AuthController extends Controller
         return response()->json(['message' => 'Logged out successfully']);
     }
 
+    #[OA\\Get(
+        path: "/${routePrefix}/auth/me",
+        summary: "Récupérer l'utilisateur authentifié",
+        tags: ["Auth"],
+        security: [['sanctum' => []]],
+        responses: [
+            new OA\\Response(response: 200, description: "Données utilisateur récupérées"),
+            new OA\\Response(response: 401, description: "Non authentifié"),
+        ]
+    )]
     public function me(): JsonResponse
     {
         return response()->json(Auth::user());

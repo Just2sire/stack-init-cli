@@ -4,7 +4,11 @@
 declare(strict_types=1);
 {{/if}}
 
+{{#if laravelOptions.use_feature_requests}}
+namespace App\Http\Requests\\{{name}};
+{{else}}
 namespace App\Http\Requests;
+{{/if}}
 
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -24,6 +28,29 @@ class Store{{name}}Request extends FormRequest
 {{#each validationRules}}
             '{{name}}' => {{{rules}}},
 {{/each}}
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'required'  => "Le champ :attribute est obligatoire.",
+            'string'    => "Le champ :attribute doit être une chaîne de caractères.",
+            'integer'   => "Le champ :attribute doit être un entier.",
+            'numeric'   => "Le champ :attribute doit être un nombre.",
+            'boolean'   => "Le champ :attribute doit être vrai ou faux.",
+            'email'     => "Le champ :attribute doit être une adresse email valide.",
+            'unique'    => "Cette valeur est déjà utilisée pour :attribute.",
+            'exists'    => "La valeur sélectionnée pour :attribute est invalide.",
+            'in'        => "La valeur sélectionnée pour :attribute est invalide.",
+            'min'       => "Le champ :attribute doit contenir au moins :min caractères.",
+            'max'       => "Le champ :attribute ne peut pas dépasser :max caractères.",
+            'date'      => "Le champ :attribute doit être une date valide.",
+            'uuid'      => "Le champ :attribute doit être un UUID valide.",
+            'nullable'  => "Le champ :attribute peut être vide.",
         ];
     }
 }

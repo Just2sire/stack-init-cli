@@ -6,7 +6,15 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+{{#if isUserModel}}
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+{{#if hasAuth}}
+use Laravel\Sanctum\HasApiTokens;
+{{/if}}
+{{else}}
 use Illuminate\Database\Eloquent\Model;
+{{/if}}
 {{#if generate.factory}}
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 {{/if}}
@@ -14,13 +22,26 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use {{{this}}};
 {{/each}}
 
-class {{name}} extends Model
+class {{name}} extends {{#if isUserModel}}Authenticatable{{else}}Model{{/if}}
 {
+{{#if isUserModel}}
+{{#if hasAuth}}
+    use HasApiTokens, Notifiable;
+{{else}}
+    use Notifiable;
+{{/if}}
+{{/if}}
 {{#if generate.factory}}
     use HasFactory;
 {{/if}}
-{{#if generate.softDelete}}
+{{#if needsSoftDelete}}
     use SoftDeletes;
+{{/if}}
+{{#if (eq migration.primary_key 'uuid')}}
+    use HasUuids;
+{{/if}}
+{{#if (eq migration.primary_key 'ulid')}}
+    use HasUlids;
 {{/if}}
 
 {{#if customTable}}

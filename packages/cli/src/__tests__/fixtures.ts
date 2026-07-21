@@ -134,6 +134,52 @@ export const laravelConfig: ProjectConfig = {
   },
 }
 
+const LARAVEL_FULL_MODEL = {
+  name: 'Article',
+  table: 'articles',
+  fields: [
+    { name: 'title',   type: 'string',  required: true,  nullable: false },
+    { name: 'content', type: 'text',    required: false, nullable: true  },
+    { name: 'status',  type: 'enum',    required: true,  nullable: false, values: ['draft', 'published'] },
+  ],
+  relations: [],
+  generate: {
+    migration: true, controller: true, resource: true, request: true,
+    policy: true,    factory: true,    seeder: true,   swagger: true,
+    softDelete: false, repository: true, service: true, tests: true, routes: true,
+    collection: true, actions: false, observer: false, events: false,
+  },
+  migration: { timestamps: true, primary_key: 'uuid' },
+} as const
+
+export const laravelFullConfig: ProjectConfig = {
+  name: 'my-app',
+  version: '1.0.0',
+  stack: 'laravel',
+  models: [LARAVEL_FULL_MODEL as any],
+  laravel: {
+    pattern: 'api-only',
+    auth: 'sanctum',
+    php_version: '8.4',
+    laravel_version: '12',
+    db_engine: 'mysql',
+    runner: 'makefile',
+    use_strict_types: true,
+    use_feature_requests: true,
+    use_api_response: true,
+    api_version: 'v1',
+    route_prefix: 'api',
+  },
+}
+
+export const laravelFlatRequestsConfig: ProjectConfig = {
+  ...laravelFullConfig,
+  laravel: {
+    ...laravelFullConfig.laravel!,
+    use_feature_requests: false,
+  },
+}
+
 export const vueConfig: ProjectConfig = {
   name: 'my-app',
   version: '1.0.0',

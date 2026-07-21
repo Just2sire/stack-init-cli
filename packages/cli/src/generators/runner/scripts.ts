@@ -50,7 +50,11 @@ export function generateSetupSh(config: ProjectConfig): string {
     lines.push('cp .env.example .env')
     lines.push('php artisan key:generate')
     if (needsPassport)  lines.push('composer require laravel/passport --no-interaction')
-    if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
+    if (needsInstallApi) {
+      lines.push('if [ ! -f routes/api.php ]; then')
+      lines.push('    php artisan install:api --no-interaction')
+      lines.push('fi')
+    }
     if (needsBreeze) {
       lines.push('composer require laravel/breeze --no-interaction')
       lines.push('php artisan breeze:install api --no-interaction')
@@ -126,7 +130,11 @@ export function generateSetupPs1(config: ProjectConfig): string {
     lines.push('Copy-Item .env.example .env')
     lines.push('php artisan key:generate')
     if (needsPassport)  lines.push('composer require laravel/passport --no-interaction')
-    if (needsInstallApi) lines.push('php artisan install:api --no-interaction')
+    if (needsInstallApi) {
+      lines.push('if (-not (Test-Path "routes/api.php")) {')
+      lines.push('    php artisan install:api --no-interaction')
+      lines.push('}')
+    }
     if (needsBreeze) {
       lines.push('composer require laravel/breeze --no-interaction')
       lines.push('php artisan breeze:install api --no-interaction')
@@ -225,8 +233,10 @@ export function generateSetupBat(config: ProjectConfig): string {
     if (needsInstallApi) {
       lines.push('')
       lines.push("echo [4c] Installation de l'API (Sanctum)...")
-      lines.push('php artisan install:api --no-interaction')
-      lines.push('if errorlevel 1 goto :error')
+      lines.push('if not exist "routes\\api.php" (')
+      lines.push('    php artisan install:api --no-interaction')
+      lines.push('    if errorlevel 1 goto :error')
+      lines.push(')')
     }
     if (needsBreeze) {
       lines.push('')

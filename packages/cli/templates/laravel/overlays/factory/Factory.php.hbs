@@ -8,6 +8,9 @@ namespace Database\Factories;
 
 use App\Models\\{{name}};
 use Illuminate\Database\Eloquent\Factories\Factory;
+{{#if isUserModel}}
+use Illuminate\Support\Facades\Hash;
+{{/if}}
 
 /**
  * @extends Factory<{{name}}>
@@ -22,6 +25,10 @@ class {{name}}Factory extends Factory
 {{#each fakerFields}}
             '{{name}}' => {{{faker}}},
 {{/each}}
+{{#if isUserModel}}
+            'password'       => Hash::make('password'),
+            'remember_token' => \Illuminate\Support\Str::random(10),
+{{/if}}
         ];
     }
 }
